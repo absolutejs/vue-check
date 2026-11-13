@@ -71,10 +71,16 @@ for file:
   mirror, and a generated file resolves each import to exactly the file its source would. Only those
   two are linked: TypeScript follows a link to its real file for what it resolves through
   `node_modules`, so those files enter the program once, but a linked source file would enter it twice.
+
+  A Vue file imported from a package (`import Picker from 'some-package/Picker.vue'`) resolves inside
+  `node_modules`, where `rootDirs` doesn't apply and a package's `exports` target is looked up exactly
+  as written. So each such import gets an exact path alias to its generated TypeScript.
 - **The same options.** The generated config extends the project's. Two options are carried over the
   way TypeScript 7 needs them: `baseUrl`, which TypeScript 7 has removed, becomes its documented
   replacement (a catch-all path alias); relative `types` entries stay resolved from the project's
-  config.
+  config. The project's incremental build file (`incremental`, `tsBuildInfoFile`) describes the program
+  `vue-tsc` builds, so `vue-check` never reads or replaces it: the check runs without one, and a
+  composite project keeps its build file in `.vue-check/`.
 
 `.ts` files therefore see every component's real type, the same as with `vue-tsc`: props, emits, slots
 and generics. Bun's checker implements `rootDirs` and `paths` as `tsc` does, so Bun itself needs no

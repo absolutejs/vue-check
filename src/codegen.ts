@@ -17,7 +17,7 @@ import { serialize } from './serialize';
  */
 
 const [root = process.cwd(), tsconfig = join(root, 'tsconfig.json'), outDir = join(root, '.vue-check')] = process.argv.slice(2);
-const { core, extensions, maps, references, ts: projectTs, unparsed } = generate({ outDir, root, tsconfig });
+const { core, extensions, maps, packageImports, references, ts: projectTs, unparsed } = generate({ outDir, root, tsconfig });
 
 /* A generated twin resolves imports from its own folder: bare imports walk up
  * node_modules folders, and the nearest package.json sets a file's module
@@ -79,6 +79,10 @@ const joined = (target: string) => {
 const aliases: Record<string, string[]> = Object.fromEntries(
 	Object.entries(options.paths ?? {}).map(([alias, targets]) => [alias, targets.flatMap(joined)])
 );
+/* A Vue file imported from a package resolves inside node_modules, past
+ * rootDirs: its exact specifier points at its twin (an exact alias is tried
+ * before any pattern). */
+for (const [specifier, target] of packageImports) aliases[specifier] = [mirrorOf(outDir, target)];
 /* TypeScript 7 (bun check) has removed baseUrl. Its documented replacement
  * keeps the meaning: paths are absolute already, and bare imports resolve
  * under baseUrl through a catch-all alias, tried after every other one. */
@@ -96,7 +100,17 @@ writeFileSync(
 			rootDirs: [parse(root).root, outDir],
 			...(paths ? { paths } : {}),
 			...(types ? { types } : {}),
-			...(options.baseUrl ? { baseUrl: null } : {})
+			...(options.baseUrl ? { baseUrl: null } : {}),
+			/* The project's incremental build file describes its own program
+			 * (vue-tsc's). This one is another program on another checker, so it
+			 * never reads or replaces that file: a composite project keeps its
+			 * build file here (still valid if `--composite false` is passed), and
+			 * any other checks without one. */
+			...(options.composite
+				? { incremental: true, tsBuildInfoFile: join(outDir, 'tsconfig.tsbuildinfo') }
+				: options.incremental || options.tsBuildInfoFile
+					? { incremental: false, tsBuildInfoFile: null }
+					: {})
 		},
 		extends: tsconfig,
 		files: files.map((file) => relative(outDir, file)),

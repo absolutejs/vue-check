@@ -272,11 +272,28 @@ export const generate = (options: { only?: string[]; outDir: string; root: strin
 
 			return matched === null ? [] : targets.map((target) => resolve(pathsBase, target.replace('*', matched)));
 		});
+	/* A Vue file imported from a package (`pkg/components/Foo.vue`, through
+	 * its folder or its `exports`): the import resolves inside node_modules,
+	 * where rootDirs doesn't join the file to its generated twin and an
+	 * `exports` target is looked up exactly as written. codegen.ts gives each
+	 * such specifier a path alias to the twin. */
+	const packageImports = new Map<string, string>();
 	const vueTarget = (name: string, from: string) => {
 		const candidates = name.startsWith('.') || isAbsolute(name) ? [resolve(dirname(from), name)] : aliasTargets(name);
 		for (const candidate of candidates) if (existsSync(candidate)) return candidate;
 		try {
-			return createRequire(from).resolve(name);
+			const target = createRequire(from).resolve(name);
+			const known = packageImports.get(name);
+			if (known === undefined) packageImports.set(name, target);
+			else if (known !== target)
+				unparsed.push({
+					fatal: true,
+					file: relative(options.root, from),
+					line: 1,
+					message: `its import of '${name}' resolves to a different file than the same import elsewhere in the project, which vue-check cannot check as vue-tsc does yet`
+				});
+
+			return target;
 		} catch {
 			return null;
 		}
@@ -386,5 +403,5 @@ export const generate = (options: { only?: string[]; outDir: string; root: strin
 			};
 		}
 	}
-	return { core, extensions, maps, references, ts, unparsed };
+	return { core, extensions, maps, packageImports, references, ts, unparsed };
 };
