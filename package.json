@@ -1,0 +1,35 @@
+{
+	"name": "@absolutejs/vue-check",
+	"version": "0.0.0",
+	"description": "Type-check Vue projects on Bun's native TypeScript checker: vue-tsc's output, at a fraction of the memory.",
+	"license": "MIT",
+	"type": "module",
+	"bin": {
+		"vue-check": "./src/cli.ts"
+	},
+	"files": ["src", "LICENSE", "README.md"],
+	"engines": {
+		"bun": ">=1.4.3"
+	},
+	"scripts": {
+		"bench": "bun bench/run.ts",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@volar/language-core": "~2.4.0",
+		"@vue/language-core": "~3.3.13"
+	},
+	"peerDependencies": {
+		"typescript": ">=5.0.0"
+	},
+	"devDependencies": {
+		"@types/bun": "latest",
+		"typescript": "^5.9.3",
+		"typescript7": "npm:typescript@7.0.2",
+		"vue-tsc": "~3.3.13"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/absolutejs/vue-check.git"
+	}
+}

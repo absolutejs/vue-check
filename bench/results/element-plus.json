@@ -1,0 +1,50 @@
+{
+	"environment": {
+		"bun": "1.4.4+absolute.2",
+		"containerMemoryLimit": "10 GB",
+		"cpu": "Intel(R) Core(TM) Ultra 7 155U",
+		"node": "v26.3.0",
+		"projectTypeScript": "6.0.3",
+		"totalMemoryGB": 12,
+		"tsc7": "7.0.2",
+		"vueTsc": "3.1.5"
+	},
+	"invalidRuns": {
+		"vue-tsc": [],
+		"vue-check": [],
+		"vue-check (1 thread)": []
+	},
+	"cores": 8,
+	"identical": true,
+	"bunCheckMatchesTsc7": true,
+	"bunVsTsc7": {
+		"onlyBunCheck": [],
+		"onlyTsc7": []
+	},
+	"onlyVueCheck": [],
+	"onlyVueTsc": [],
+	"typeScript7Changes": [
+		"packages/components/popper/src/trigger.vue(111,15): error TS2769: No overload matches this call.",
+		"packages/components/popper/src/trigger.vue(161,11): error TS2769: No overload matches this call.",
+		"packages/components/popper/src/trigger.vue(97,15): error TS2769: No overload matches this call."
+	],
+	"project": "/project",
+	"runs": 5,
+	"summary": {
+		"vue-tsc": {
+			"errors": 1,
+			"medianPeakRssMB": 1225,
+			"medianWallS": 15.91
+		},
+		"vue-check": {
+			"errors": 4,
+			"medianPeakRssMB": 564,
+			"medianWallS": 2.64
+		},
+		"vue-check (1 thread)": {
+			"errors": 4,
+			"medianPeakRssMB": 511,
+			"medianWallS": 3.5
+		}
+	}
+}

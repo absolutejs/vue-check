@@ -1,0 +1,53 @@
+{
+	"environment": {
+		"bun": "1.4.4+absolute.2",
+		"containerMemoryLimit": "10 GB",
+		"cpu": "Intel(R) Core(TM) Ultra 7 155U",
+		"node": "v26.3.0",
+		"projectTypeScript": "6.0.3",
+		"totalMemoryGB": 12,
+		"tsc7": "7.0.2",
+		"vueTsc": "3.3.13"
+	},
+	"invalidRuns": {
+		"vue-tsc": [],
+		"vue-check": [],
+		"vue-check (1 thread)": []
+	},
+	"cores": 8,
+	"identical": true,
+	"bunCheckMatchesTsc7": true,
+	"bunVsTsc7": {
+		"onlyBunCheck": [],
+		"onlyTsc7": []
+	},
+	"onlyVueCheck": [],
+	"onlyVueTsc": [],
+	"typeScript7Changes": [
+		"src/utils/print.ts(127,17): error TS2339: Property 'dom' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
+		"src/utils/print.ts(161,17): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
+		"src/utils/print.ts(162,15): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
+		"src/utils/print.ts(168,19): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
+		"src/utils/print.ts(169,17): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
+		"src/utils/print.ts(73,51): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'."
+	],
+	"project": "/project",
+	"runs": 5,
+	"summary": {
+		"vue-tsc": {
+			"errors": 0,
+			"medianPeakRssMB": 1466,
+			"medianWallS": 16.14
+		},
+		"vue-check": {
+			"errors": 6,
+			"medianPeakRssMB": 711,
+			"medianWallS": 3.01
+		},
+		"vue-check (1 thread)": {
+			"errors": 6,
+			"medianPeakRssMB": 670,
+			"medianWallS": 3.74
+		}
+	}
+}

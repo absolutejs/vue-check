@@ -1,0 +1,6 @@
+node_modules/
+.vue-check/
+bench/apps/
+bench/results/*.raw.json
+*.log
+.DS_Store
