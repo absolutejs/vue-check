@@ -10,14 +10,13 @@ import { serialize } from './serialize';
  * exits, so the memory codegen used (TypeScript, Vue's compiler, every
  * parsed file) is returned before the check starts.
  *
- *   bun src/codegen.ts <root> <tsconfig>
+ *   bun src/codegen.ts <root> <tsconfig> [outDir]
  *
  * Writes .vue-check/codegen.json: the source maps as data (see serialize.ts)
  * and any generated file that doesn't parse.
  */
 
-const [root = process.cwd(), tsconfig = join(root, 'tsconfig.json')] = process.argv.slice(2);
-const outDir = join(root, '.vue-check');
+const [root = process.cwd(), tsconfig = join(root, 'tsconfig.json'), outDir = join(root, '.vue-check')] = process.argv.slice(2);
 const { core, extensions, maps, references, ts: projectTs, unparsed } = generate({ outDir, root, tsconfig });
 
 /* A generated twin resolves imports from its own folder: bare imports walk up

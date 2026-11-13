@@ -12,6 +12,9 @@ in the same format, so it can replace `vue-tsc --noEmit` in a `typecheck` script
 [Bun](https://bun.com) 1.4.4 or newer (Node projects can add Bun as a dev dependency) and a project on
 `vue-tsc` 3.
 
+vue-check writes the TypeScript it generates to `.vue-check/` in the project, so add `.vue-check/` to
+`.gitignore`, or put it in a folder you already ignore with `--out-dir=<dir>`.
+
 ## How it works
 
 `vue-tsc` doesn't type-check Vue itself. Vue's codegen (`@vue/language-core`) turns each `.vue` file

@@ -22,7 +22,7 @@ import { deserialize, type Serialized } from './serialize';
  * Each step runs after the previous one has exited, so the peak memory is
  * the largest step, not their sum.
  *
- *   vue-check [-p tsconfig.json] [--threads=N]
+ *   vue-check [-p tsconfig.json] [--threads=N] [--out-dir=.vue-check]
  */
 
 const argument = (name: string) => {
@@ -39,13 +39,15 @@ if (!existsSync(tsconfig)) {
 	console.error(`vue-check: ${relative(root, tsconfig)} not found`);
 	process.exit(2);
 }
-const outDir = join(root, '.vue-check');
+/* Where the generated files go: .vue-check/ in the project, or --out-dir
+ * (a tool that keeps a cache folder, such as absolute typecheck). */
+const outDir = resolve(root, argument('--out-dir') ?? '.vue-check');
 /* VUE_CHECK_PHASES=<file> writes how long each step took: codegen and the
  * check (each its own process) and mapping errors back (this one). */
 const phasesFile = process.env.VUE_CHECK_PHASES;
 
 const codegenStarted = performance.now();
-const codegen = Bun.spawnSync([process.execPath, join(import.meta.dir, 'codegen.ts'), root, tsconfig], {
+const codegen = Bun.spawnSync([process.execPath, join(import.meta.dir, 'codegen.ts'), root, tsconfig, outDir], {
 	cwd: root,
 	stderr: 'inherit',
 	stdout: 'inherit'
@@ -61,7 +63,7 @@ const checkConfig = join(outDir, 'tsconfig.json');
 
 const threads = argument('--threads');
 /* Anything else is a compiler option for bun check (e.g. --skipLibCheck), as vue-tsc passes them to tsc. */
-const OWN = new Set(['-p', '--project', '--threads']);
+const OWN = new Set(['-p', '--project', '--threads', '--out-dir']);
 const passThrough = process.argv.slice(2).filter((value, index, all) => {
 	const name = value.split('=')[0] ?? '';
 	if (OWN.has(name)) return false;
@@ -126,7 +128,7 @@ const generatedPaths = Object.entries(codegenResult.maps).map(
 	([file, map]) => [join(root, file), join(root, map.source)] as const
 );
 const sourcePaths = (message: string) =>
-	message.includes('.vue-check')
+	message.includes(outDir)
 		? generatedPaths.reduce((text, [generatedFile, source]) => text.split(generatedFile).join(source), message)
 		: message;
 
