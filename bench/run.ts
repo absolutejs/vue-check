@@ -101,12 +101,15 @@ const measure = async (command: string[]): Promise<Measurement> => {
 const errorsOf = (stdout: string) =>
 	stdout
 		.split('\n')
-		.filter((line) => /\(\d+,\d+\): error TS\d+/.test(line))
+		.filter((line) => /\(\d+,\d+\): error TS\d+|^error TS\d+/.test(line.trim()))
 		.map((line) => line.trim())
 		.sort();
 
+/* Resolved as Node resolves it from the project: a workspace package finds
+ * the monorepo's hoisted install. */
+const projectRequire = createRequire(join(project, 'package.json'));
 const tools = {
-	'vue-tsc': ['node', join(project, 'node_modules/vue-tsc/bin/vue-tsc.js'), '--noEmit', '-p', tsconfig, ...vueTscArgs],
+	'vue-tsc': ['node', projectRequire.resolve('vue-tsc/bin/vue-tsc.js'), '--noEmit', '-p', tsconfig, ...vueTscArgs],
 	'vue-check': [process.execPath, join(tool, 'src/cli.ts'), '-p', tsconfig, ...vueTscArgs],
 	'vue-check (1 thread)': [process.execPath, join(tool, 'src/cli.ts'), '-p', tsconfig, '--threads=1', ...vueTscArgs]
 } as const;
@@ -178,11 +181,11 @@ const withChecker = async (tsc: string) => {
 	});
 	const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
 
-	return { errors: errorsOf(stdout), exitCode, finished: existsSync(phasesFile) && [0, 1, 2].includes(exitCode) };
+	return { errors: errorsOf(stdout), exitCode, finished: existsSync(phasesFile) && [0, 2].includes(exitCode) };
 };
 /* The TypeScript vue-tsc runs: resolved from the project's vue-tsc. */
 const projectTsc = (() => {
-	const fromVueTsc = createRequire(createRequire(join(project, 'package.json')).resolve('vue-tsc/package.json'));
+	const fromVueTsc = createRequire(projectRequire.resolve('vue-tsc/package.json'));
 
 	return join(dirname(fromVueTsc.resolve('typescript/package.json')), 'bin/tsc');
 })();
@@ -207,7 +210,8 @@ const invalid = Object.fromEntries(
 		list
 			.filter(
 				(item) =>
-					(item.exitCode !== 0 && item.exitCode !== 1 && item.exitCode !== 2) ||
+					// vue-tsc (tsc) exits 0, 1 or 2 after a check; vue-check 0 or 2.
+					(name.startsWith('vue-check') ? item.exitCode !== 0 && item.exitCode !== 2 : item.exitCode > 2) ||
 					// vue-check writes its phase report only after a finished check, so a
 					// run without one crashed, whatever its exit code says.
 					(name.startsWith('vue-check') && !item.phases)
@@ -236,13 +240,13 @@ const environment = {
 	})(),
 	cpu: cpus()[0]?.model ?? 'unknown',
 	node: process.version,
-	projectTypeScript: versionOf(['node', join(project, 'node_modules/typescript/bin/tsc'), '--version']),
+	projectTypeScript: versionOf(['node', projectTsc, '--version']).replace('Version ', ''),
 	totalMemoryGB: Math.round(totalmem() / 2 ** 30),
 	tsc7: versionOf([join(tool, 'node_modules/@typescript/typescript-linux-x64/lib/tsc'), '--version']),
 	// vue-tsc --version prints TypeScript's version; vue-tsc's own is in its package.
 	vueTsc: (() => {
 		try {
-			return (JSON.parse(readFileSync(join(project, 'node_modules/vue-tsc/package.json'), 'utf8')) as { version: string }).version;
+			return (JSON.parse(readFileSync(projectRequire.resolve('vue-tsc/package.json'), 'utf8')) as { version: string }).version;
 		} catch {
 			return 'unknown';
 		}

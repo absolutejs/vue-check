@@ -5,6 +5,13 @@
 #   bench/run-in-docker.sh <project-dir> <name> [extra args for run.ts]
 set -euo pipefail
 project=$(realpath "$1"); name=$2; shift 2
+# A workspace package (WORKSPACE=<monorepo root>): the whole monorepo is
+# mounted, so the package finds its hoisted node_modules, and the run starts
+# in the package.
+mount=$project; inside=/project
+if [ -n "${WORKSPACE:-}" ]; then
+	mount=$(realpath "$WORKSPACE"); inside=/project/$(realpath --relative-to="$mount" "$project")
+fi
 tool=$(realpath "$(dirname "$0")/..")
 bun_binary=${BUN_BINARY:-$(command -v bun)}
 mkdir -p "$tool/bench/results"
@@ -19,10 +26,10 @@ if [ -n "${MODULES:-}" ]; then
 fi
 docker run --rm --network none --memory "$memory" --memory-swap "$memory" \
 	--user "$(id -u):$(id -g)" -e HOME=/tmp \
-	-v "$project":/project \
+	-v "$mount":/project \
 	"${modules[@]}" \
 	-v "$tool":/tool:ro \
 	-v "$tool/bench/results":/tool/bench/results \
 	-v "$bun_binary":/usr/local/bin/bun:ro \
-	-w /project node:22-bookworm \
-	bun /tool/bench/run.ts /project --name="$name" "$@"
+	-w "$inside" node:22-bookworm \
+	bun /tool/bench/run.ts "$inside" --name="$name" "$@"

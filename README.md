@@ -9,7 +9,8 @@ bunx @absolutejs/vue-check -p tsconfig.json
 
 It accepts the same compiler flags as `vue-tsc --noEmit` (for example `--skipLibCheck`) and prints errors
 in the same format, so it can replace `vue-tsc --noEmit` in a `typecheck` script. It needs
-[Bun](https://bun.com) 1.4.3 or newer; Node projects can add Bun as a dev dependency.
+[Bun](https://bun.com) 1.4.4 or newer (Node projects can add Bun as a dev dependency) and a project on
+`vue-tsc` 3.
 
 ## How it works
 
@@ -17,41 +18,46 @@ in the same format, so it can replace `vue-tsc --noEmit` in a `typecheck` script
 into TypeScript, with a map back to the source, and `tsc` checks that TypeScript. The memory and time go
 to `tsc`, running in Node over the whole project.
 
-`vue-check` keeps Vue's codegen and replaces the checker:
+`vue-check` keeps Vue's codegen and replaces the checker, in three steps that each run after the
+previous one has exited, so peak memory is the largest step, not their sum:
 
-1. **The same codegen.** It runs the `@vue/language-core` your project's `vue-tsc` uses, resolved
-   through your `vue-tsc`, and writes the generated TypeScript to `.vue-check/`.
-2. **Bun's checker.** `bun check` checks your project and the generated files together. `rootDirs` joins
-   the two trees, so `import Foo from './Foo.vue'` resolves to the generated code and `.ts` files see your
-   components' real types.
-3. **The same errors.** Each error is mapped back to its line and column in the `.vue` file. Vue's
-   source maps say, per position, which errors `vue-tsc` reports there. `vue-check` applies the same
-   rules with Volar's own `shouldReportDiagnostics`, so you see what `vue-tsc` would show and nothing
-   from Vue's internal scaffolding.
+1. **The same codegen.** It runs the `@vue/language-core` your project's `vue-tsc` uses, set up the way
+   `vue-tsc` sets it up, and writes the generated TypeScript to `.vue-check/`.
+2. **The same program, on Bun's checker.** `bun check` checks your project and the generated files as
+   one program, file for file the one `vue-tsc` builds: the same root files in the same order, with
+   `rootDirs` and your path aliases joining the two trees, so `import Foo from './Foo.vue'` (or
+   `'@/components/Foo.vue'`) resolves to the generated code and `.ts` files see your components' real
+   types.
+3. **The same errors.** Each error is mapped back to its line and column in the `.vue` file by Volar's
+   own source map and diagnostic filter, as `vue-tsc` maps it, so you see what `vue-tsc` would show and
+   nothing from Vue's internal scaffolding.
 
 It never hides a failure. If generated code doesn't parse, a checker stops at the syntax error and checks
 nothing, so `vue-check` exits with an error that names the file instead of reporting a clean result.
 
 ## How it's tested
 
-The same way Bun proved its checker against TypeScript: a differential, with the reference tool as the
-oracle and no expected output stored.
+The same way Bun proved its checker against TypeScript: a differential, with the reference tools as
+oracles and no expected output stored. Every project is checked four ways, and each claim is an exact
+equality (every code, message, file, line and column):
 
-- **Real projects, with planted errors.** `bench/mutate.ts` plants known errors across a copy of a large
-  Vue app: wrong types in `<script setup>`, unknown names and misspelled methods in templates, and type
-  errors in plain `.ts` files. Both tools check the copy, and every error must match: code, message,
-  file, line and column. A clean project alone would only prove that both print nothing.
-- **TypeScript 7.** `bun check` follows TypeScript 7, and `vue-tsc` runs your project's TypeScript (5 or
-  6). A difference counts as TypeScript 7's own only when real `tsc` 7.0.2, the version Bun tests
-  against, reports it on your plain TypeScript and your TypeScript doesn't. The benchmark checks this
-  automatically. Any other difference is a bug.
-- **Unit tests** cover the codegen repair below (`bun test`).
+- **The Vue handling.** `vue-check` on your project's own TypeScript reports exactly what `vue-tsc`
+  reports.
+- **Bun's checker.** `vue-check` on `bun check` reports exactly what it reports on real `tsc` 7.0.2,
+  the version Bun tests against, for the same generated program.
+- **TypeScript 7.** `bun check` follows TypeScript 7. Its changes are whatever the same program gives
+  on your TypeScript and on `tsc` 7, by definition, and the end-to-end result must be `vue-tsc`'s with
+  exactly those changes.
+- **Planted errors.** `bench/mutate.ts` plants hundreds of known errors of 12 kinds across a copy of a
+  large app: script setup, template bindings and interpolations, `v-if` and `v-for`, event handlers,
+  props on components, `@vue-expect-error` used and unused, plain `.ts` files, and component props typed
+  from a `.ts` file. A clean project alone would only prove that both print nothing.
+- **Unit tests** cover the codegen normalization and the source-map serialization (`bun test`).
 
 ## Results
 
 Measured in an isolated container (no network, memory-capped). Memory is the peak RSS of the whole
-process tree, so `vue-check`'s codegen and its `bun check` child are counted together. Times are wall
-clock; the figures are medians.
+process tree, so every `vue-check` process is counted. Times are wall clock; the figures are medians.
 
 <!-- RESULTS -->
 

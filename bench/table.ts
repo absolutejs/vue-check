@@ -10,7 +10,8 @@ import { join } from 'node:path';
  *   bun bench/table.ts
  */
 
-type Summary = Record<string, { errors: number; medianPeakRssMB: number; medianWallS: number }>;
+type Phases = { checkMB: number; checkS: number; codegenMB: number; codegenS: number; mapMB: number; mapS: number; vueFiles: number };
+type Summary = Record<string, { errors: number; medianPeakRssMB: number; medianWallS: number; phases?: Phases }>;
 type Result = {
 	bunCheckMatchesTsc7: boolean;
 	environment?: Record<string, string | number>;
@@ -51,6 +52,16 @@ for (const { name, result } of proof)
 	lines.push(
 		`| ${name} | ${result.environment?.vueTsc ?? '?'} | ${result.summary['vue-tsc']?.errors ?? '?'} | ${yes(result.identical)} | ${yes(result.bunCheckMatchesTsc7)} | ${result.typeScript7Changes.added.length + result.typeScript7Changes.removed.length} |`
 	);
+lines.push('');
+lines.push('| Project | Vue files | Codegen | bun check | Mapping |');
+lines.push('|---|---|---|---|---|');
+for (const { name, result } of performance) {
+	const phases = result.summary['vue-check']?.phases;
+	if (phases)
+		lines.push(
+			`| ${name} | ${phases.vueFiles} | ${phases.codegenS} s · ${phases.codegenMB} MB | ${phases.checkS} s · ${phases.checkMB} MB | ${phases.mapS} s · ${phases.mapMB} MB |`
+		);
+}
 const environment = results.find(({ result }) => result.environment)?.result.environment;
 if (environment)
 	lines.push(

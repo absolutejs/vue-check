@@ -1,0 +1,76 @@
+{
+	"environment": {
+		"bun": "1.4.4+absolute.2",
+		"containerMemoryLimit": "10 GB",
+		"cpu": "Intel(R) Core(TM) Ultra 7 155U",
+		"node": "v26.3.0",
+		"projectTypeScript": "6.0.3",
+		"totalMemoryGB": 12,
+		"tsc7": "Version 7.0.2",
+		"vueTsc": "3.3.11"
+	},
+	"invalidRuns": {
+		"vue-tsc": [],
+		"vue-check": [],
+		"vue-check (1 thread)": []
+	},
+	"oraclesFinished": true,
+	"cores": 8,
+	"identical": true,
+	"bunCheckMatchesTsc7": true,
+	"bunVsTsc7": {
+		"onlyBunCheck": [],
+		"onlyTsc7": []
+	},
+	"endToEnd": {
+		"onlyExpected": [],
+		"onlyVueCheck": []
+	},
+	"typeScript7Changes": {
+		"added": [],
+		"removed": []
+	},
+	"vueHandling": {
+		"onlyVueCheck": [],
+		"onlyVueTsc": []
+	},
+	"project": "/project/apps/web-antdv-next",
+	"runs": 1,
+	"summary": {
+		"vue-tsc": {
+			"errors": 0,
+			"medianPeakRssMB": 1455,
+			"medianWallS": 16.68
+		},
+		"vue-check": {
+			"errors": 0,
+			"medianPeakRssMB": 467,
+			"medianWallS": 3.53,
+			"phases": {
+				"checkMB": 397,
+				"checkS": 0.8,
+				"codegenMB": 433,
+				"codegenS": 2.57,
+				"mapMB": 142,
+				"regeneratedFiles": 0,
+				"mapS": 0.13,
+				"vueFiles": 376
+			}
+		},
+		"vue-check (1 thread)": {
+			"errors": 0,
+			"medianPeakRssMB": 446,
+			"medianWallS": 4.23,
+			"phases": {
+				"checkMB": 362,
+				"checkS": 1.82,
+				"codegenMB": 412,
+				"codegenS": 2.25,
+				"mapMB": 152,
+				"regeneratedFiles": 0,
+				"mapS": 0.13,
+				"vueFiles": 376
+			}
+		}
+	}
+}

@@ -1,0 +1,76 @@
+{
+	"environment": {
+		"bun": "1.4.4+absolute.2",
+		"containerMemoryLimit": "10 GB",
+		"cpu": "Intel(R) Core(TM) Ultra 7 155U",
+		"node": "v26.3.0",
+		"projectTypeScript": "6.0.3",
+		"totalMemoryGB": 12,
+		"tsc7": "Version 7.0.2",
+		"vueTsc": "3.3.14"
+	},
+	"invalidRuns": {
+		"vue-tsc": [],
+		"vue-check": [],
+		"vue-check (1 thread)": []
+	},
+	"oraclesFinished": true,
+	"cores": 8,
+	"identical": true,
+	"bunCheckMatchesTsc7": true,
+	"bunVsTsc7": {
+		"onlyBunCheck": [],
+		"onlyTsc7": []
+	},
+	"endToEnd": {
+		"onlyExpected": [],
+		"onlyVueCheck": []
+	},
+	"typeScript7Changes": {
+		"added": [],
+		"removed": []
+	},
+	"vueHandling": {
+		"onlyVueCheck": [],
+		"onlyVueTsc": []
+	},
+	"project": "/project",
+	"runs": 1,
+	"summary": {
+		"vue-tsc": {
+			"errors": 1,
+			"medianPeakRssMB": 750,
+			"medianWallS": 4.13
+		},
+		"vue-check": {
+			"errors": 1,
+			"medianPeakRssMB": 300,
+			"medianWallS": 1.76,
+			"phases": {
+				"checkMB": 193,
+				"checkS": 0.11,
+				"codegenMB": 266,
+				"codegenS": 1.63,
+				"mapMB": 40,
+				"regeneratedFiles": 0,
+				"mapS": 0,
+				"vueFiles": 121
+			}
+		},
+		"vue-check (1 thread)": {
+			"errors": 1,
+			"medianPeakRssMB": 279,
+			"medianWallS": 1.61,
+			"phases": {
+				"checkMB": 170,
+				"checkS": 0.36,
+				"codegenMB": 245,
+				"codegenS": 1.24,
+				"mapMB": 40,
+				"regeneratedFiles": 0,
+				"mapS": 0,
+				"vueFiles": 121
+			}
+		}
+	}
+}

@@ -83,13 +83,35 @@ const checkStarted = performance.now();
 const checked = Bun.spawnSync(
 	oracleTsc
 		? [oracleTsc, '-p', checkConfig, '--noEmit', '--pretty', 'false', ...passThrough]
-		: [process.execPath, 'check', '-p', checkConfig, '--no-pretty', '--all', ...(threads ? [`--threads=${threads}`] : []), ...passThrough],
+		: [
+				process.execPath,
+				'check',
+				'-p',
+				checkConfig,
+				'--no-pretty',
+				'--all',
+				// Type-check, never a project's own `check` script in its place.
+				'--no-script',
+				...(threads ? [`--threads=${threads}`] : []),
+				...passThrough
+			],
 	{ cwd: root, stderr: 'pipe', stdout: 'pipe' }
 );
 const checkMs = performance.now() - checkStarted;
 const mapStarted = performance.now();
 
+/* A message that names a generated file names its Vue file, as vue-tsc's do
+ * (its virtual file is the .vue file itself). */
+const generatedPaths = Object.entries(codegenResult.maps).map(
+	([file, map]) => [join(root, file), join(root, map.source)] as const
+);
+const sourcePaths = (message: string) =>
+	message.includes('.vue-check')
+		? generatedPaths.reduce((text, [generatedFile, source]) => text.split(generatedFile).join(source), message)
+		: message;
+
 const ERROR_LINE = /^(.+?)\((\d+),(\d+)\): (error|warning) (TS\d+): (.*)$/;
+const GLOBAL_ERROR = /^error TS\d+: /;
 const lines = checked.stdout.toString().split('\n');
 const fileOf = (rawFile: string) => relative(root, resolve(root, rawFile));
 /* The maps, as data. A file whose rules aren't all data (see serialize.ts),
@@ -202,27 +224,36 @@ const sourcePosition = (file: string, map: SourceMap, line: number, column: numb
 };
 
 let errors = 0;
+/* Every error the checker printed, before mapping drops vue-tsc's hidden ones. */
+let reported = 0;
 const unparsed = new Set<string>();
 for (const line of lines) {
 	const match = ERROR_LINE.exec(line);
 	if (!match) {
-		if (line.startsWith(' ') && errors > 0) console.log(line);
+		/* An error with no position (an invalid option, a missing file): the
+		 * project's own, printed as tsc prints it. */
+		if (GLOBAL_ERROR.test(line)) {
+			reported++;
+			errors++;
+			console.log(line);
+		} else if (line.startsWith(' ') && errors > 0) console.log(line);
 		continue;
 	}
+	reported++;
 	const [, rawFile = '', rawLine = '0', rawColumn = '0', severity, code, message] = match;
 	const file = fileOf(rawFile);
 	const map = maps[file];
-	/* A syntax error in generated code means nothing was type-checked (a
-	 * checker stops at one, as tsc does), whether or not vue-tsc would show
-	 * it. Never hide that. */
-	if (map && code?.startsWith('TS1')) unparsed.add(map.source);
 	const position = map
 		? sourcePosition(file, map, Number(rawLine), Number(rawColumn), (code ?? '').replace('TS', ''))
 		: { column: Number(rawColumn), line: Number(rawLine) };
+	/* A syntax error in generated code that maps nowhere: the checker stopped
+	 * on codegen's text, so nothing was type-checked. Never hide that. (One
+	 * that maps is the user's own, reported like any error.) */
+	if (map && !position && code?.startsWith('TS1')) unparsed.add(map.source);
 	// Not where vue-tsc reports it: the codegen's own scaffolding.
 	if (!position) continue;
 	errors++;
-	console.log(`${map ? map.source : file}(${position.line},${position.column}): ${severity} ${code}: ${message}`);
+	console.log(`${map ? map.source : file}(${position.line},${position.column}): ${severity} ${code}: ${sourcePaths(message ?? '')}`);
 }
 if (phasesFile)
 	writeFileSync(
@@ -241,5 +272,13 @@ if (unparsed.size > 0) {
 	);
 	process.exit(3);
 }
-if (checked.exitCode !== 0 && errors === 0 && checked.stderr.length > 0) process.stderr.write(checked.stderr);
-process.exit(errors > 0 ? 2 : checked.exitCode === 0 ? 0 : 1);
+/* The checker failed without printing a single error: it didn't check (a
+ * crash, a bad config). Never report that as clean. (Errors it printed that
+ * vue-tsc hides are a clean result, as with vue-tsc.) */
+if (checked.exitCode !== 0 && reported === 0) {
+	process.stderr.write(checked.stdout);
+	process.stderr.write(checked.stderr);
+	console.error('vue-check: the checker failed (above), so the project was NOT type-checked.');
+	process.exit(3);
+}
+process.exit(errors > 0 ? 2 : 0);
