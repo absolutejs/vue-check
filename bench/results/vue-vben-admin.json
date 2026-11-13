@@ -35,40 +35,40 @@
 		"onlyVueTsc": []
 	},
 	"project": "/project/apps/web-antdv-next",
-	"runs": 1,
+	"runs": 5,
 	"summary": {
 		"vue-tsc": {
 			"errors": 0,
-			"medianPeakRssMB": 1465,
-			"medianWallS": 18.19
+			"medianPeakRssMB": 1445,
+			"medianWallS": 23.17
 		},
 		"vue-check": {
 			"errors": 0,
-			"medianPeakRssMB": 449,
-			"medianWallS": 3.77,
+			"medianPeakRssMB": 447,
+			"medianWallS": 4.54,
 			"phases": {
-				"checkMB": 392,
-				"checkS": 0.88,
-				"codegenMB": 400,
-				"codegenS": 2.71,
-				"mapMB": 154,
+				"checkMB": 391,
+				"checkS": 0.98,
+				"codegenMB": 390,
+				"codegenS": 2.58,
+				"mapMB": 299,
 				"regeneratedFiles": 0,
-				"mapS": 0.14,
+				"mapS": 0.92,
 				"vueFiles": 376
 			}
 		},
 		"vue-check (1 thread)": {
 			"errors": 0,
 			"medianPeakRssMB": 421,
-			"medianWallS": 4.98,
+			"medianWallS": 5.92,
 			"phases": {
-				"checkMB": 361,
-				"checkS": 2.27,
-				"codegenMB": 387,
-				"codegenS": 2.54,
-				"mapMB": 159,
+				"checkMB": 363,
+				"checkS": 2.32,
+				"codegenMB": 377,
+				"codegenS": 2.62,
+				"mapMB": 317,
 				"regeneratedFiles": 0,
-				"mapS": 0.14,
+				"mapS": 0.95,
 				"vueFiles": 376
 			}
 		}

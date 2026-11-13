@@ -198,3 +198,51 @@ For a package in a monorepo, set `WORKSPACE=<monorepo root>`.
 ## Results
 
 <!-- RESULTS -->
+
+| Project | vue-tsc | vue-check | vue-check (1 thread) | Faster | Less memory |
+|---|---|---|---|---|---|
+| element-plus | 18.9 s · 1220 MB | 5.43 s · 420 MB | 6.65 s · 420 MB | 3.5× | 2.9× |
+| gitea | 10.49 s · 1015 MB | 1.97 s · 314 MB | 2.5 s · 271 MB | 5.3× | 3.2× |
+| halo-console-components | 2.58 s · 301 MB | 1.39 s · 227 MB | 1.61 s · 230 MB | 1.9× | 1.3× |
+| naive-ui-admin | 8.61 s · 914 MB | 2.43 s · 303 MB | 2.88 s · 301 MB | 3.5× | 3.0× |
+| slidev | 4.43 s · 741 MB | 1.71 s · 285 MB | 2.04 s · 285 MB | 2.6× | 2.6× |
+| soybean-admin | 1.56 s · 577 MB | 1.71 s · 270 MB | 1.76 s · 271 MB | 0.9× | 2.1× |
+| vitepress-client | 3.93 s · 366 MB | 2.05 s · 268 MB | 1.78 s · 264 MB | 1.9× | 1.4× |
+| vitepress-docs | 1.66 s · 302 MB | 0.73 s · 185 MB | 0.76 s · 182 MB | 2.3× | 1.6× |
+| vue-element-plus-admin | 5.49 s · 537 MB | 1.38 s · 235 MB | 1.72 s · 238 MB | 4.0× | 2.3× |
+| vue-pure-admin | 19.15 s · 1466 MB | 4.33 s · 410 MB | 5.12 s · 409 MB | 4.4× | 3.6× |
+| vue-vben-admin | 23.17 s · 1445 MB | 4.54 s · 447 MB | 5.92 s · 421 MB | 5.1× | 3.2× |
+
+| Project | vue-tsc | Errors (vue-tsc) | Same as vue-tsc | bun check = tsc 7 | TypeScript 7 changes |
+|---|---|---|---|---|---|
+| element-plus | 3.1.5 | 1 | ✓ | ✓ | 3 |
+| gitea | 3.3.14 | 0 | ✓ | ✓ | 0 |
+| halo-console-components | 3.3.9 | 0 | ✓ | ✓ | 0 |
+| naive-ui-admin | 3.3.13 | 0 | ✓ | ✓ | 0 |
+| slidev | 3.3.14 | 1 | ✓ | ✓ | 0 |
+| soybean-admin | 3.3.12 | 1 | ✓ | ✓ | 0 |
+| vitepress-client | 3.3.14 | 33 | ✓ | ✓ | 0 |
+| vitepress-docs | 3.3.14 | 17 | ✓ | ✓ | 0 |
+| vue-element-plus-admin | 3.3.9 | 0 | ✓ | ✓ | 0 |
+| vue-pure-admin-planted-errors | 3.3.13 | 220 | ✓ | ✓ | 24 |
+| vue-pure-admin | 3.3.13 | 0 | ✓ | ✓ | 6 |
+| vue-vben-admin | 3.3.11 | 0 | ✓ | ✓ | 0 |
+
+| Project | Vue files | Codegen | bun check | Mapping |
+|---|---|---|---|---|
+| element-plus | 165 | 2.26 s · 339 MB | 0.92 s · 297 MB | 2.17 s · 420 MB |
+| gitea | 26 | 1.21 s · 238 MB | 0.39 s · 275 MB | 0.33 s · 140 MB |
+| halo-console-components | 31 | 0.97 s · 193 MB | 0.09 s · 100 MB | 0.23 s · 98 MB |
+| naive-ui-admin | 68 | 1.52 s · 269 MB | 0.32 s · 257 MB | 0.55 s · 188 MB |
+| slidev | 121 | 1.55 s · 252 MB | 0.15 s · 206 MB | 0 s · 40 MB |
+| soybean-admin | 90 | 1.57 s · 236 MB | 0.13 s · 169 MB | 0 s · 39 MB |
+| vitepress-client | 66 | 1.47 s · 234 MB | 0.12 s · 109 MB | 0.39 s · 121 MB |
+| vitepress-docs | 4 | 0.49 s · 151 MB | 0.06 s · 106 MB | 0.15 s · 87 MB |
+| vue-element-plus-admin | 34 | 0.9 s · 201 MB | 0.16 s · 175 MB | 0.31 s · 121 MB |
+| vue-pure-admin | 255 | 2.82 s · 369 MB | 0.98 s · 353 MB | 0.45 s · 192 MB |
+| vue-vben-admin | 376 | 2.58 s · 390 MB | 0.98 s · 391 MB | 0.92 s · 299 MB |
+
+Vue's conformance suite (vuejs/language-tools test-workspace/tsc): 251 of 252 cases identical on every leg; bun check = tsc 7 on 252 of 252. Different: `_failed_#4569` (see Known differences).
+
+Environment: Intel(R) Core(TM) Ultra 7 155U, 12 GB RAM (container limit 10 GB), Bun 1.4.4+absolute.2, Node v26.3.0, oracle tsc 7.0.2. Medians of 5 runs.
+

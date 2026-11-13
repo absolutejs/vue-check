@@ -250,7 +250,7 @@ const environment = {
 	node: process.version,
 	projectTypeScript: versionOf(['node', projectTsc, '--version']).replace('Version ', ''),
 	totalMemoryGB: Math.round(totalmem() / 2 ** 30),
-	tsc7: versionOf([join(tool, 'node_modules/@typescript/typescript-linux-x64/lib/tsc'), '--version']),
+	tsc7: versionOf([join(tool, 'node_modules/@typescript/typescript-linux-x64/lib/tsc'), '--version']).replace('Version ', ''),
 	// vue-tsc --version prints TypeScript's version; vue-tsc's own is in its package.
 	vueTsc: (() => {
 		try {

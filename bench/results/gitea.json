@@ -35,40 +35,40 @@
 		"onlyVueTsc": []
 	},
 	"project": "/project",
-	"runs": 1,
+	"runs": 5,
 	"summary": {
 		"vue-tsc": {
 			"errors": 0,
-			"medianPeakRssMB": 1022,
-			"medianWallS": 9.15
+			"medianPeakRssMB": 1015,
+			"medianWallS": 10.49
 		},
 		"vue-check": {
 			"errors": 0,
-			"medianPeakRssMB": 319,
-			"medianWallS": 1.81,
+			"medianPeakRssMB": 314,
+			"medianWallS": 1.97,
 			"phases": {
-				"checkMB": 279,
-				"checkS": 0.35,
-				"codegenMB": 249,
-				"codegenS": 1.41,
-				"mapMB": 53,
+				"checkMB": 275,
+				"checkS": 0.39,
+				"codegenMB": 238,
+				"codegenS": 1.21,
+				"mapMB": 140,
 				"regeneratedFiles": 0,
-				"mapS": 0.03,
+				"mapS": 0.33,
 				"vueFiles": 26
 			}
 		},
 		"vue-check (1 thread)": {
 			"errors": 0,
-			"medianPeakRssMB": 272,
-			"medianWallS": 1.97,
+			"medianPeakRssMB": 271,
+			"medianWallS": 2.5,
 			"phases": {
-				"checkMB": 233,
-				"checkS": 0.81,
-				"codegenMB": 235,
-				"codegenS": 1.12,
-				"mapMB": 59,
+				"checkMB": 232,
+				"checkS": 0.95,
+				"codegenMB": 233,
+				"codegenS": 1.2,
+				"mapMB": 138,
 				"regeneratedFiles": 0,
-				"mapS": 0.03,
+				"mapS": 0.34,
 				"vueFiles": 26
 			}
 		}

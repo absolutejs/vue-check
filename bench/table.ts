@@ -24,7 +24,7 @@ type Result = {
 const root = join(import.meta.dir, '..');
 const directory = join(root, 'bench/results');
 const results = readdirSync(directory)
-	.filter((file) => file.endsWith('.json') && !file.endsWith('.raw.json'))
+	.filter((file) => file.endsWith('.json') && !file.endsWith('.raw.json') && file !== 'conformance.json')
 	.sort()
 	.map((file) => ({ name: file.replace(/\.json$/, ''), result: JSON.parse(readFileSync(join(directory, file), 'utf8')) as Result }));
 
@@ -62,11 +62,26 @@ for (const { name, result } of performance) {
 			`| ${name} | ${phases.vueFiles} | ${phases.codegenS} s · ${phases.codegenMB} MB | ${phases.checkS} s · ${phases.checkMB} MB | ${phases.mapS} s · ${phases.mapMB} MB |`
 		);
 }
+const conformancePath = join(directory, 'conformance.json');
+try {
+	const conformance = JSON.parse(readFileSync(conformancePath, 'utf8')) as {
+		bunMatchesTsc7: number;
+		cases: number;
+		identical: number;
+		failing: { name: string }[];
+	};
+	lines.push(
+		'',
+		`Vue's conformance suite (vuejs/language-tools test-workspace/tsc): ${conformance.identical} of ${conformance.cases} cases identical on every leg; bun check = tsc 7 on ${conformance.bunMatchesTsc7} of ${conformance.cases}.${conformance.failing.length > 0 ? ` Different: ${conformance.failing.map((item) => `\`${item.name}\``).join(', ')} (see Known differences).` : ''}`
+	);
+} catch {
+	// No conformance run recorded.
+}
 const environment = results.find(({ result }) => result.environment)?.result.environment;
 if (environment)
 	lines.push(
 		'',
-		`Environment: ${environment.cpu}, ${environment.totalMemoryGB} GB RAM (container limit ${environment.containerMemoryLimit}), Bun ${environment.bun}, Node ${environment.node}, oracle tsc ${environment.tsc7}. Medians of ${performance[0]?.result.runs ?? '?'} runs.`
+		`Environment: ${environment.cpu}, ${environment.totalMemoryGB} GB RAM (container limit ${environment.containerMemoryLimit}), Bun ${environment.bun}, Node ${environment.node}, oracle tsc ${String(environment.tsc7).replace('Version ', '')}. Medians of ${performance[0]?.result.runs ?? '?'} runs.`
 	);
 const table = lines.join('\n');
 

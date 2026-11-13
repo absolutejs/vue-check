@@ -35,40 +35,40 @@
 		"onlyVueTsc": []
 	},
 	"project": "/project/apps/admin",
-	"runs": 1,
+	"runs": 5,
 	"summary": {
 		"vue-tsc": {
 			"errors": 0,
 			"medianPeakRssMB": 537,
-			"medianWallS": 3.67
+			"medianWallS": 5.49
 		},
 		"vue-check": {
 			"errors": 0,
-			"medianPeakRssMB": 256,
-			"medianWallS": 1.55,
+			"medianPeakRssMB": 235,
+			"medianWallS": 1.38,
 			"phases": {
-				"checkMB": 173,
-				"checkS": 0.13,
-				"codegenMB": 222,
-				"codegenS": 1.15,
-				"mapMB": 120,
+				"checkMB": 175,
+				"checkS": 0.16,
+				"codegenMB": 201,
+				"codegenS": 0.9,
+				"mapMB": 121,
 				"regeneratedFiles": 0,
-				"mapS": 0.26,
+				"mapS": 0.31,
 				"vueFiles": 34
 			}
 		},
 		"vue-check (1 thread)": {
 			"errors": 0,
-			"medianPeakRssMB": 243,
-			"medianWallS": 1.4,
+			"medianPeakRssMB": 238,
+			"medianWallS": 1.72,
 			"phases": {
 				"checkMB": 135,
-				"checkS": 0.34,
-				"codegenMB": 209,
-				"codegenS": 0.77,
-				"mapMB": 125,
+				"checkS": 0.39,
+				"codegenMB": 204,
+				"codegenS": 0.94,
+				"mapMB": 123,
 				"regeneratedFiles": 0,
-				"mapS": 0.27,
+				"mapS": 0.33,
 				"vueFiles": 34
 			}
 		}
