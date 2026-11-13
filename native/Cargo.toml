@@ -10,3 +10,35 @@ oxc_parser = "0.139.0"
 oxc_span = "0.139.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+
+# `unsafe` is to Rust what a type cast is to TypeScript: a claim the compiler
+# can't check. This crate needs none, so it's forbidden outright. If that ever
+# has to change, `forbid` becomes `deny`, each block is allowed by name with a
+# reason, and carries a `// SAFETY:` comment stating the invariant it relies on
+# and why it holds (clippy enforces the comment).
+[lints.rust]
+unsafe_code = "forbid"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+undocumented_unsafe_blocks = "deny"
+# The other escapes from the checker, kept as rare as `unsafe`:
+# a lint is never switched off without saying why,
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+# a number changes type through `From`/`TryFrom`, never a silent `as`,
+as_conversions = "deny"
+# and nothing that can fail on real input is assumed not to.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+dbg_macro = "deny"

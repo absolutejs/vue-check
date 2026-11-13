@@ -22,6 +22,12 @@ vuejs/language-tools tag `v3.3.14`). A project on any other version uses the Jav
 which stays exact. A new Vue release can make a project slower until it's ported, never wrong.
 Porting a release means porting its codegen diff and passing the bar again.
 
+Vue's template parser isn't part of `@vue/language-core`: it comes from the `@vue/compiler-dom` the
+project installed. The native parser reproduces `@vue/compiler-dom` **3.5.36 to 3.5.45** (the parser's
+source is the same across them, and each one installed in the benchmark is checked), with the 7.0
+line of the `entities` package it decodes entities with. A project that resolves any other version
+uses the JavaScript codegen.
+
 ## Stages
 
 **Stage 1: native Vue codegen.** A Rust binary takes a batch of Vue files with their resolved
@@ -39,3 +45,52 @@ data). `src/codegen.ts` calls it instead of `@vue/language-core` for a supported
 the binary, so codegen no longer loads TypeScript.
 
 Each stage ships only after it passes the bar on everything above.
+
+## What native declines
+
+The port stands behind a result or it doesn't return one. Two cases go back to the JavaScript codegen:
+
+- **A file whose result it can't guarantee.** Where the original's behavior comes from JavaScript
+  itself (an offset before the start of the text, half of a surrogate pair), the native side marks
+  the file unsupported instead of guessing.
+- **A project with a file that changes how later files parse.** Vue's parser keeps its `v-pre` and
+  `<pre>` state between files and never clears it: a file that ends inside `v-pre`, or that makes the
+  parser throw halfway, changes how every file after it in the same process is parsed. Only the
+  original, run in the original order, reproduces that.
+
+## Proving each layer
+
+The folder diff is the bar, and it only says *that* two outputs differ. So each layer is also compared
+on its own, against the project's own packages, value for value:
+
+```sh
+native/oracle/run.sh <project> <results-dir>     # every .vue file of a project
+bun native/oracle/stress.ts <dir> --count=3000   # generated files real projects don't contain
+MODULES=<a project's node_modules> native/oracle/run.sh <dir> <results-dir>
+```
+
+`native/oracle/dump.ts` runs in a container and writes what the project's `@vue/compiler-dom` and
+`@vue/language-core` make of each file: the syntax tree with every location, the errors, and the
+blocks of the single-file component. `vue-check-codegen parse` writes the same from the native side,
+and `native/oracle/compare.ts` compares them.
+
+Real projects contain almost no malformed templates, so `stress.ts` generates them, from a seeded
+generator: malformed tags, every kind of attribute and directive, entities, comments and CDATA,
+raw-text blocks, characters outside ASCII, and files cut off at any point, so that every state of the
+tokenizer is also an end state.
+
+## Writing the Rust
+
+- **No `unsafe`.** It is to Rust what a type cast is to TypeScript: a claim the compiler can't check.
+  The crate forbids it (`unsafe_code = "forbid"`). If a block is ever unavoidable, it carries a
+  `// SAFETY:` comment stating the invariant it relies on and why it holds, which clippy enforces.
+- **The other escapes are as rare.** No lint is switched off without a reason, numbers change type
+  through `From`/`TryFrom` and never a silent `as`, and nothing that can fail on real input is assumed
+  not to (`unwrap`, `expect` and `panic!` are denied). `cargo clippy` runs with `all` and `pedantic`
+  denied.
+- **Offsets are bytes inside, UTF-16 at the edge.** Rust strings are UTF-8 and everything that reads
+  the output (Volar's source maps, TypeScript) counts UTF-16 code units. Offsets are converted once,
+  where results leave the program (`utf16.rs`).
+- **JavaScript's definitions, not Rust's.** Where the two differ (what `trim` removes, what `\s`
+  matches), `js.rs` has JavaScript's.
+
