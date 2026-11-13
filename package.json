@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/vue-check",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"description": "Type-check Vue projects on Bun's native TypeScript checker: vue-tsc's output, at a fraction of the memory.",
 	"license": "MIT",
 	"type": "module",
