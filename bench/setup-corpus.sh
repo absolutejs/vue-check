@@ -29,7 +29,7 @@ rsync -a --exclude node_modules --exclude .vue-check --exclude .git "$dir/vue-pu
 bun "$tool/bench/mutate.ts" "$dir/pure-admin-planted" --count=240 >/dev/null
 echo "ready: vue-pure-admin-planted-errors"
 # Vue's conformance cases (vuejs/language-tools test-workspace/tsc) with the published vue-tsc.
-clone vuejs/language-tools 31e5f34 "$dir/language-tools"
+clone vuejs/language-tools 31e5f342f9b505056e807b97c478c366df9d2eee "$dir/language-tools"
 mkdir -p "$dir/conformance" && rm -rf "$dir/conformance/tsc"
 cp -r "$dir/language-tools/test-workspace/tsc" "$dir/language-tools/test-workspace/tsconfig.base.json" "$dir/conformance/"
 printf '{\n\t"private": true,\n\t"devDependencies": {\n\t\t"typescript": "5.9.3",\n\t\t"vue": "3.6.0-rc.6",\n\t\t"vue-component-type-helpers": "3.3.14",\n\t\t"vue-tsc": "3.3.14"\n\t}\n}\n' > "$dir/conformance/package.json"

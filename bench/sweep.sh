@@ -11,12 +11,19 @@ summary() { jq -c '{identical, bunCheckMatchesTsc7, oraclesFinished, vueTsc: .su
 grep -v '^#' bench/corpus.txt | while IFS='|' read -r name _repository _commit project workspace tsconfig args; do
 	root=${project%%/*}
 	if [ "$workspace" = "-" ]; then env=(); else env=(WORKSPACE="$dir/$workspace"); fi
-	env "${env[@]}" timeout 1500 bench/run-in-docker.sh "$dir/$project" "$name" --runs="$runs" --tsconfig="$tsconfig" --vue-tsc-args="$args" >/dev/null 2>&1
-	echo "$name $(summary "$name")"
+	# A run that failed leaves the previous result file: never report that as this run's.
+	if env "${env[@]}" timeout 1500 bench/run-in-docker.sh "$dir/$project" "$name" --runs="$runs" --tsconfig="$tsconfig" --vue-tsc-args="$args" >/dev/null 2>&1; then
+		echo "$name $(summary "$name")"
+	else
+		echo "$name RUN FAILED"
+	fi
 done
-MODULES="$dir/vue-pure-admin/node_modules" timeout 1500 bench/run-in-docker.sh "$dir/pure-admin-planted" vue-pure-admin-planted-errors --runs=1 --vue-tsc-args=--skipLibCheck >/dev/null 2>&1
-echo "planted $(summary vue-pure-admin-planted-errors)"
+if MODULES="$dir/vue-pure-admin/node_modules" timeout 1500 bench/run-in-docker.sh "$dir/pure-admin-planted" vue-pure-admin-planted-errors --runs=1 --vue-tsc-args=--skipLibCheck >/dev/null 2>&1; then
+	echo "planted $(summary vue-pure-admin-planted-errors)"
+else
+	echo "planted RUN FAILED"
+fi
 docker run --rm --network none --memory 10g --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$dir/conformance":/project -v "$tool":/tool:ro \
 	-v "$tool/bench/results":/tool/bench/results -v "${BUN_BINARY:-$(command -v bun)}":/usr/local/bin/bun:ro -w /project node:22-bookworm \
-	bun /tool/bench/conformance.ts /project --jobs=4 >/dev/null 2>&1
+	bun /tool/bench/conformance.ts /project --jobs=4 >/dev/null 2>&1 || { echo "conformance RUN FAILED"; exit 1; }
 echo "conformance $(jq -c '{cases, identical, bunMatchesTsc7, failing: [.failing[].name]}' bench/results/conformance.json)"
