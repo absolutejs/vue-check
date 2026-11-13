@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { availableParallelism, cpus, tmpdir, totalmem } from 'node:os';
-import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 
 /*
  * vue-check against vue-tsc on a real project: the same errors, and what each
@@ -151,38 +152,51 @@ const summary = Object.fromEntries(
 );
 const oracle = errorsOf(results['vue-tsc']?.[0]?.stdout ?? '');
 const ours = errorsOf(results['vue-check']?.[0]?.stdout ?? '');
-const onlyVueTsc = oracle.filter((line) => !ours.includes(line));
-const onlyVueCheckAll = ours.filter((line) => !oracle.includes(line));
+const minus = (a: string[], b: string[]) => a.filter((line) => !b.includes(line));
 
 /*
- * Three ways, so each question is answered on its own:
- *   bun check vs tsc 7, with vue-check's same codegen and mapping: is Bun's
- *     checker right? (tsc 7.0.2 is the oracle Bun tests against.) These must
- *     agree exactly.
- *   vue-check on tsc 7 vs vue-tsc: is the Vue handling right? vue-tsc runs
- *     the project's TypeScript (5 or 6), so a difference only counts as
- *     TypeScript 7's own when vue-check on real tsc 7 reports it too.
+ * Four ways, so each question is answered on its own, and every answer is an
+ * exact equality:
+ *
+ *   vue-check on the project's own TypeScript vs vue-tsc: is the Vue
+ *     handling right? Same TypeScript, so they must agree exactly.
+ *   vue-check on bun check vs vue-check on tsc 7.0.2 (the oracle Bun tests
+ *     against), on exactly the same generated program: is Bun's checker
+ *     right? They must agree exactly.
+ *   vue-check on the project's TypeScript vs on tsc 7, again on the same
+ *     program: what TypeScript 7 itself changes. By definition, not chosen.
+ *   And end to end: vue-check (on bun check) must equal vue-tsc with exactly
+ *     those TypeScript 7 changes applied.
  */
-const tsc7 = join(tool, 'node_modules/@typescript/typescript-linux-x64/lib/tsc');
-const oracleRun = await (async () => {
+const withChecker = async (tsc: string) => {
 	rmSync(phasesFile, { force: true });
 	const child = Bun.spawn([process.execPath, join(tool, 'src/cli.ts'), '-p', tsconfig, ...vueTscArgs], {
 		cwd: project,
-		env: { ...process.env, VUE_CHECK_PHASES: phasesFile, VUE_CHECK_TSC: tsc7 },
+		env: { ...process.env, VUE_CHECK_PHASES: phasesFile, VUE_CHECK_TSC: tsc },
 		stderr: 'pipe',
 		stdout: 'pipe'
 	});
 	const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
 
-	return { exitCode, finished: existsSync(phasesFile) && [0, 1, 2].includes(exitCode), stdout };
-})();
-const withTsc7 = errorsOf(oracleRun.stdout);
-const bunVsTsc7 = {
-	onlyBunCheck: ours.filter((line) => !withTsc7.includes(line)),
-	onlyTsc7: withTsc7.filter((line) => !ours.includes(line))
+	return { errors: errorsOf(stdout), exitCode, finished: existsSync(phasesFile) && [0, 1, 2].includes(exitCode) };
 };
-const typeScript7Changes = onlyVueCheckAll.filter((line) => withTsc7.includes(line));
-const onlyVueCheck = onlyVueCheckAll.filter((line) => !typeScript7Changes.includes(line));
+/* The TypeScript vue-tsc runs: resolved from the project's vue-tsc. */
+const projectTsc = (() => {
+	const fromVueTsc = createRequire(createRequire(join(project, 'package.json')).resolve('vue-tsc/package.json'));
+
+	return join(dirname(fromVueTsc.resolve('typescript/package.json')), 'bin/tsc');
+})();
+const tsc7 = join(tool, 'node_modules/@typescript/typescript-linux-x64/lib/tsc');
+const withProjectTs = await withChecker(projectTsc);
+const withTsc7 = await withChecker(tsc7);
+const vueHandling = { onlyVueCheck: minus(withProjectTs.errors, oracle), onlyVueTsc: minus(oracle, withProjectTs.errors) };
+const bunVsTsc7 = { onlyBunCheck: minus(ours, withTsc7.errors), onlyTsc7: minus(withTsc7.errors, ours) };
+const typeScript7Changes = {
+	added: minus(withTsc7.errors, withProjectTs.errors),
+	removed: minus(withProjectTs.errors, withTsc7.errors)
+};
+const expected = [...minus(oracle, typeScript7Changes.removed), ...typeScript7Changes.added].sort();
+const endToEnd = { onlyExpected: minus(expected, ours), onlyVueCheck: minus(ours, expected) };
 
 /* A run only counts if it actually type-checked: vue-check exits 3 when the
  * generated code didn't parse (nothing was checked), and either tool can
@@ -201,7 +215,7 @@ const invalid = Object.fromEntries(
 			.map((item) => item.exitCode)
 	])
 );
-const anyInvalid = Object.values(invalid).some((codes) => codes.length > 0) || !oracleRun.finished;
+const anyInvalid = Object.values(invalid).some((codes) => codes.length > 0) || !withProjectTs.finished || !withTsc7.finished;
 
 const versionOf = (command: string[]) => {
 	const result = Bun.spawnSync(command, { cwd: project, stderr: 'pipe', stdout: 'pipe' });
@@ -238,16 +252,21 @@ const environment = {
 const report = {
 	environment,
 	invalidRuns: invalid,
-	oracleFinished: oracleRun.finished,
+	oraclesFinished: withProjectTs.finished && withTsc7.finished,
 	cores: availableParallelism(),
-	/** Same errors as vue-tsc, apart from changes TypeScript 7 itself makes (verified with tsc 7.0.2). */
-	identical: !anyInvalid && onlyVueTsc.length === 0 && onlyVueCheck.length === 0,
+	/** Same errors as vue-tsc on the same TypeScript, and end to end apart from exactly TypeScript 7's own changes. */
+	identical:
+		!anyInvalid &&
+		vueHandling.onlyVueCheck.length === 0 &&
+		vueHandling.onlyVueTsc.length === 0 &&
+		endToEnd.onlyExpected.length === 0 &&
+		endToEnd.onlyVueCheck.length === 0,
 	/** bun check against real tsc 7.0.2, on exactly the same generated code: must be empty both ways. */
 	bunCheckMatchesTsc7: bunVsTsc7.onlyBunCheck.length === 0 && bunVsTsc7.onlyTsc7.length === 0,
 	bunVsTsc7,
-	onlyVueCheck,
-	onlyVueTsc,
+	endToEnd,
 	typeScript7Changes,
+	vueHandling,
 	project,
 	runs,
 	summary

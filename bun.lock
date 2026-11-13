@@ -6,6 +6,7 @@
       "name": "@absolutejs/vue-check",
       "dependencies": {
         "@volar/language-core": "~2.4.0",
+        "@volar/source-map": "~2.4.0",
         "@vue/language-core": "~3.3.13",
       },
       "devDependencies": {

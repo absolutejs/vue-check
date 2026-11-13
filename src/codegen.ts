@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import ts from 'typescript';
-import { generate } from './generate';
+import { isAbsolute, join, relative, resolve } from 'node:path';
+import { generate, parseProject } from './generate';
 import { serialize } from './serialize';
 
 /*
@@ -19,21 +18,46 @@ import { serialize } from './serialize';
 
 const [root = process.cwd(), tsconfig = join(root, 'tsconfig.json')] = process.argv.slice(2);
 const outDir = join(root, '.vue-check');
-const { core, maps, ts: projectTs, unparsed } = generate({ outDir, root, tsconfig });
+const { core, extensions, maps, ts: projectTs, unparsed } = generate({ outDir, root, tsconfig });
 
-/* The project's own options, plus the generated tree as one directory with it. */
-// Read the way tsc reads it: comments and trailing commas allowed.
-const projectConfig = (ts.readConfigFile(tsconfig, ts.sys.readFile).config ?? {}) as { exclude?: string[]; include?: string[] };
-const include = (projectConfig.include ?? ['**/*']).map((pattern) => join('..', pattern));
-// tsc's default excludes are relative to the config's folder, which is now .vue-check/.
-const exclude = (projectConfig.exclude ?? ['node_modules', 'bower_components', 'jspm_packages']).map((pattern) => join('..', pattern));
+/* The project's own options, plus the generated tree as one directory with
+ * it. The root files are listed explicitly, in the order tsc lists the
+ * project's (each Vue file replaced by its generated TypeScript, in place):
+ * the order files enter a program decides the order types are created, and
+ * so how TypeScript prints them in messages. */
+const generatedFor = new Map(Object.entries(maps).map(([file, map]) => [join(root, map.source), join(root, file)]));
+const project = parseProject(projectTs, tsconfig, extensions);
+const files = project.fileNames.flatMap((file) => {
+	if (!extensions.some((extension) => file.endsWith(extension))) return [file];
+	const generatedFile = generatedFor.get(file);
+
+	return generatedFile ? [generatedFile] : [];
+});
+/* rootDirs joins the trees for relative imports only. A path alias
+ * (`@/components/Foo.vue`) gets the same join: each target also points into
+ * .vue-check/, as absolute paths so the base they resolve from can't differ. */
+const { options } = project;
+const pathsBase = options.baseUrl ?? (options as { pathsBasePath?: string }).pathsBasePath ?? root;
+const paths = options.paths
+	? Object.fromEntries(
+			Object.entries(options.paths).map(([alias, targets]) => [
+				alias,
+				targets.flatMap((target) => {
+					const absolute = isAbsolute(target) ? target : resolve(pathsBase, target);
+					const inside = relative(root, absolute);
+
+					return inside.startsWith('..') || isAbsolute(inside) ? [absolute] : [absolute, join(outDir, inside)];
+				})
+			])
+		)
+	: undefined;
 writeFileSync(
 	join(outDir, 'tsconfig.json'),
 	JSON.stringify({
-		compilerOptions: { allowArbitraryExtensions: true, rootDirs: [root, outDir] },
+		compilerOptions: { allowArbitraryExtensions: true, rootDirs: [root, outDir], ...(paths ? { paths } : {}) },
 		extends: tsconfig,
-		exclude,
-		include: [...include, './**/*.ts', './**/*.tsx']
+		files: files.map((file) => relative(outDir, file)),
+		include: []
 	})
 );
 /* Every diagnostic code the project's TypeScript defines, for the fixed rules

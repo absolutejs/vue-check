@@ -4,9 +4,9 @@
 		"containerMemoryLimit": "10 GB",
 		"cpu": "Intel(R) Core(TM) Ultra 7 155U",
 		"node": "v26.3.0",
-		"projectTypeScript": "6.0.3",
+		"projectTypeScript": "Version 6.0.3",
 		"totalMemoryGB": 12,
-		"tsc7": "7.0.2",
+		"tsc7": "Version 7.0.2",
 		"vueTsc": "3.3.13"
 	},
 	"invalidRuns": {
@@ -14,6 +14,7 @@
 		"vue-check": [],
 		"vue-check (1 thread)": []
 	},
+	"oraclesFinished": true,
 	"cores": 8,
 	"identical": true,
 	"bunCheckMatchesTsc7": true,
@@ -21,33 +22,81 @@
 		"onlyBunCheck": [],
 		"onlyTsc7": []
 	},
-	"onlyVueCheck": [],
-	"onlyVueTsc": [],
-	"typeScript7Changes": [
-		"src/utils/print.ts(127,17): error TS2339: Property 'dom' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
-		"src/utils/print.ts(161,17): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
-		"src/utils/print.ts(162,15): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
-		"src/utils/print.ts(168,19): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
-		"src/utils/print.ts(169,17): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
-		"src/utils/print.ts(73,51): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'."
-	],
+	"endToEnd": {
+		"onlyExpected": [],
+		"onlyVueCheck": []
+	},
+	"typeScript7Changes": {
+		"added": [
+			"src/components/ReBarcode/src/index.vue(44,17): error TS2339: Property 'vueCheckUnknown1' does not exist on type '{ $: ComponentInternalInstance; $data: {}; $attrs: Attrs; $refs: Data; $slots: Readonly<InternalSlots>; $root: ComponentPublicInstance<{}, ... 13 more ..., any>; ... 32 more ...; $loading: { ...; }; }'.",
+			"src/components/ReFlowChart/src/DataDialog.vue(18,17): error TS2339: Property 'vueCheckUnknown157' does not exist on type '{ $: ComponentInternalInstance; $data: {}; $attrs: Attrs; $refs: Data; $slots: Readonly<InternalSlots>; $root: ComponentPublicInstance<{}, ... 13 more ..., any>; ... 29 more ...; $loading: { ...; }; }'.",
+			"src/components/ReIcon/src/Select.vue(214,19): error TS2339: Property 'vueCheckHandler5' does not exist on type '{ $: ComponentInternalInstance; $data: {}; $attrs: Attrs; $refs: Data; $slots: Readonly<InternalSlots>; $root: ComponentPublicInstance<{}, ... 13 more ..., any>; ... 30 more ...; \"onUpdate:modelValue\"?: (value: string) => any; }'.",
+			"src/layout/components/lay-search/components/SearchModal.vue(337,12): error TS2339: Property 'vueCheckFlag15' does not exist on type '{ $: ComponentInternalInstance; $data: {}; $attrs: Attrs; $refs: Data; $slots: Readonly<InternalSlots>; $root: ComponentPublicInstance<{}, ... 13 more ..., any>; ... 30 more ...; \"onUpdate:value\"?: (val: boolean) => any; }'.",
+			"src/utils/print.ts(127,17): error TS2339: Property 'dom' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
+			"src/utils/print.ts(161,17): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
+			"src/utils/print.ts(162,15): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
+			"src/utils/print.ts(168,19): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
+			"src/utils/print.ts(169,17): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
+			"src/utils/print.ts(73,51): error TS2339: Property 'conf' does not exist on type '{ init: () => void; extendOptions: <T>(obj: any, obj2: T) => T; getStyle: () => string; getHtml: () => Element; writeIframe: (content: any) => void; toPrint: (frameWindow: any) => void; isDOM: (obj: any) => boolean; setDomHeight(arr: any): void; }'.",
+			"src/views/components/dialog/formPrimitive.vue(23,19): error TS2339: Property 'vueCheckHandler65' does not exist on type '{ $: ComponentInternalInstance; $data: {}; $attrs: Attrs; $refs: Data; $slots: Readonly<InternalSlots>; $root: ComponentPublicInstance<{}, ... 13 more ..., any>; ... 30 more ...; \"onUpdate:data\"?: (...args: any[]) => any; }'.",
+			"src/views/components/drawer/form.vue(48,12): error TS2339: Property 'vueCheckFlag219' does not exist on type '{ $: ComponentInternalInstance; $data: {}; $attrs: Attrs; $refs: Data; $slots: Readonly<InternalSlots>; $root: ComponentPublicInstance<{}, ... 13 more ..., any>; ... 29 more ...; $loading: { ...; }; }'.",
+			"src/views/system/menu/form.vue(342,19): error TS2339: Property 'vueCheckHandler113' does not exist on type '{ $: ComponentInternalInstance; $data: {}; $attrs: Attrs; $refs: Data; $slots: Readonly<InternalSlots>; $root: ComponentPublicInstance<{}, ... 13 more ..., any>; ... 29 more ...; $loading: { ...; }; }'.",
+			"src/views/vue-flow/layouting/animationEdge.vue(196,12): error TS2339: Property 'vueCheckFlag147' does not exist on type '{ $: ComponentInternalInstance; $data: {}; $attrs: Attrs; $refs: Data; $slots: Readonly<InternalSlots>; $root: ComponentPublicInstance<{}, ... 13 more ..., any>; ... 37 more ...; $loading: { ...; }; }'.",
+			"src/views/welcome/components/charts/ChartBar.vue(108,19): error TS2339: Property 'vueCheckHandler149' does not exist on type '{ $: ComponentInternalInstance; $data: {}; $attrs: Attrs; $refs: Data; $slots: Readonly<InternalSlots>; $root: ComponentPublicInstance<{}, ... 13 more ..., any>; ... 30 more ...; $loading: { ...; }; }'."
+		],
+		"removed": [
+			"src/components/ReBarcode/src/index.vue(44,17): error TS2339: Property 'vueCheckUnknown1' does not exist on type '{ options: Record<string, any>; type: string; tag: string; text?: string; $props: { readonly options: Record<string, any>; readonly type: string; readonly tag: string; readonly text?: string; }; ... 33 more ...; $loading: { ...; }; }'.",
+			"src/components/ReFlowChart/src/DataDialog.vue(18,17): error TS2339: Property 'vueCheckUnknown157' does not exist on type '{ graphData?: Record<string, any>; $props: { readonly graphData?: Record<string, any>; }; $: ComponentInternalInstance; $data: {}; $attrs: Attrs; ... 30 more ...; $loading: { ...; }; }'.",
+			"src/components/ReIcon/src/Select.vue(214,19): error TS2339: Property 'vueCheckHandler5' does not exist on type '{ modelValue?: string; \"onUpdate:modelValue\"?: (value: string) => any; $props: __VLS_ModelProps & { \"onUpdate:modelValue\"?: (value: string) => any; }; $emit: (event: \"update:modelValue\", value: string) => void; ... 32 more ...; $loading: { ...; }; }'.",
+			"src/layout/components/lay-search/components/SearchModal.vue(337,12): error TS2339: Property 'vueCheckFlag15' does not exist on type '{ value: boolean; \"onUpdate:value\"?: (val: boolean) => any; $props: Readonly<MappedOmit<LooseRequired<Props>, never>> & {} & { readonly value: boolean; } & { ...; }; ... 33 more ...; $loading: { ...; }; }'.",
+			"src/views/components/dialog/formPrimitive.vue(23,19): error TS2339: Property 'vueCheckHandler65' does not exist on type '{ data: string; \"onUpdate:data\"?: (...args: any[]) => any; $props: Readonly<MappedOmit<LooseRequired<FormProps>, \"data\">> & { readonly data: string; } & {} & { ...; }; ... 33 more ...; $loading: { ...; }; }'.",
+			"src/views/components/drawer/form.vue(48,12): error TS2339: Property 'vueCheckFlag219' does not exist on type '{ formInline: { user: string; region: string; }; $props: Readonly<MappedOmit<LooseRequired<FormProps>, \"formInline\">> & { readonly formInline: { ...; }; } & {}; ... 33 more ...; $loading: { ...; }; }'.",
+			"src/views/system/menu/form.vue(342,19): error TS2339: Property 'vueCheckHandler113' does not exist on type '{ formInline: FormItemProps; $props: Readonly<MappedOmit<LooseRequired<FormProps>, \"formInline\">> & { readonly formInline: FormItemProps; } & {}; ... 33 more ...; $loading: { ...; }; }'.",
+			"src/views/vue-flow/layouting/animationEdge.vue(196,12): error TS2339: Property 'vueCheckFlag147' does not exist on type '{ id: string; target: string; source: string; targetX: number; targetY: number; sourcePosition: string; targetPosition: string; sourceX: number; sourceY: number; $props: { readonly id: string; readonly target: string; ... 6 more ...; readonly sourceY: number; }; ... 33 more ...; $loading: { ...; }; }'.",
+			"src/views/welcome/components/charts/ChartBar.vue(108,19): error TS2339: Property 'vueCheckHandler149' does not exist on type '{ requireData: number[]; questionData: number[]; $props: { readonly requireData: number[]; readonly questionData: number[]; }; $: ComponentInternalInstance; $data: {}; ... 31 more ...; $loading: { ...; }; }'."
+		]
+	},
+	"vueHandling": {
+		"onlyVueCheck": [],
+		"onlyVueTsc": []
+	},
 	"project": "/project",
 	"runs": 1,
 	"summary": {
 		"vue-tsc": {
-			"errors": 40,
-			"medianPeakRssMB": 1470,
-			"medianWallS": 15.68
+			"errors": 220,
+			"medianPeakRssMB": 1461,
+			"medianWallS": 16.34
 		},
 		"vue-check": {
-			"errors": 46,
-			"medianPeakRssMB": 733,
-			"medianWallS": 3.34
+			"errors": 226,
+			"medianPeakRssMB": 430,
+			"medianWallS": 4.44,
+			"phases": {
+				"checkMB": 356,
+				"checkS": 0.84,
+				"codegenMB": 396,
+				"codegenS": 2.65,
+				"mapMB": 281,
+				"regeneratedFiles": 40,
+				"mapS": 0.9,
+				"vueFiles": 255
+			}
 		},
 		"vue-check (1 thread)": {
-			"errors": 46,
-			"medianPeakRssMB": 639,
-			"medianWallS": 3.73
+			"errors": 226,
+			"medianPeakRssMB": 419,
+			"medianWallS": 4.91,
+			"phases": {
+				"checkMB": 323,
+				"checkS": 1.61,
+				"codegenMB": 385,
+				"codegenS": 2.34,
+				"mapMB": 281,
+				"regeneratedFiles": 40,
+				"mapS": 0.92,
+				"vueFiles": 255
+			}
 		}
 	}
 }

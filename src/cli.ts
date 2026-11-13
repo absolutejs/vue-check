@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, relative, resolve } from 'node:path';
+import * as ownSourceMap from '@volar/source-map';
 import type { SourceMap, UnparsedFile } from './generate';
 import { deserialize, type Serialized } from './serialize';
 
@@ -127,42 +129,76 @@ const positionOf = (text: string, offset: number) => {
 	return { column: (before.at(-1)?.length ?? 0) + 1, line: before.length };
 };
 
+/* Volar's own SourceMap (the project's, as vue-tsc loads it), so an error is
+ * mapped exactly as vue-tsc maps it, filter calls and all. Loaded lazily:
+ * a clean project never needs it. */
+type VolarMapping = { data: unknown; generatedLengths: number[]; generatedOffsets: number[]; lengths: number[]; sourceOffsets: number[] };
+type VolarSourceMap = {
+	toSourceRange: (start: number, end: number, fallbackToAnyMatch: boolean, filter: (data: unknown) => boolean) => Iterable<[number, number, ...unknown[]]>;
+};
+let VolarSourceMapClass: (new (mappings: VolarMapping[]) => VolarSourceMap) | null = null;
+const volarSourceMap = () => {
+	if (VolarSourceMapClass) return VolarSourceMapClass;
+	const projectRequire = createRequire(join(root, 'package.json'));
+	const chain = ['vue-tsc/package.json', '@vue/language-core/package.json', '@volar/language-core/package.json'];
+	const requirers: NodeJS.Require[] = [];
+	let current: NodeJS.Require = projectRequire;
+	for (const step of chain) {
+		try {
+			current = createRequire(current.resolve(step));
+			requirers.unshift(current);
+		} catch {
+			break;
+		}
+	}
+	for (const requirer of [...requirers, projectRequire]) {
+		try {
+			VolarSourceMapClass = (requirer('@volar/source-map') as { SourceMap: typeof VolarSourceMapClass }).SourceMap;
+			if (VolarSourceMapClass) return VolarSourceMapClass;
+		} catch {
+			// Not resolvable from here.
+		}
+	}
+	VolarSourceMapClass = (ownSourceMap as unknown as { SourceMap: NonNullable<typeof VolarSourceMapClass> }).SourceMap;
+
+	return VolarSourceMapClass;
+};
+const volarMaps = new Map<SourceMap, VolarSourceMap>();
+
+/* tsc-style output gives where an error starts, not its length. A comment
+ * there (an unused @ts-expect-error directive) is the span, as TypeScript
+ * reports it; otherwise the token there (a name or a string). */
+const SPAN = /^(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/|[\p{L}\p{N}_$]+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/u;
+
 /**
  * A generated-file error, where vue-tsc would report it: the position in the
- * .vue file, or null when vue-tsc wouldn't report it there. As Volar does for
- * vue-tsc, a segment counts only if its `verification` feature allows this
- * error code (Volar's own shouldReportDiagnostics decides).
+ * .vue file, or null when vue-tsc wouldn't report it. Volar's toSourceRange
+ * with its diagnostic filter (shouldReportDiagnostics, or the same rules as
+ * data), as Volar's transformDiagnostic calls it for vue-tsc.
  */
 const sourcePosition = (file: string, map: SourceMap, line: number, column: number, code: string) => {
 	const generated = readFileSync(join(root, file), 'utf8');
 	const position = offsetOf(generated, line, column);
-	const at = position - map.shift;
-	/* tsc-style output gives where an error starts, not its length; the
-	 * token there (a name or a string) is its span, as TypeScript reports it. */
-	const token = /^(?:[\p{L}\p{N}_$]+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/u.exec(generated.slice(position));
-	const end = at + Math.max(1, token?.[0].length ?? 1);
-	const source = () => readFileSync(join(root, map.source), 'utf8');
-	/* As Volar maps a diagnostic for vue-tsc: its start and its end each have
-	 * to fall in a segment whose `verification` allows this code. A start
-	 * inside a segment wins over one at a segment's end (where two meet, the
-	 * next one owns the position). */
-	const allowed = map.mappings.filter((mapping) => map.shouldReport(mapping.data, code));
-	const find = (offset: number, inclusiveEnd: boolean) => {
-		for (const mapping of allowed)
-			for (let index = 0; index < mapping.generated.length; index++) {
-				const start = mapping.generated[index] ?? 0;
-				const length = mapping.generatedLengths[index] ?? 0;
-				const inside = inclusiveEnd ? offset >= start && offset <= start + length : offset >= start && offset < start + length;
-				if (inside) return { index, mapping, start };
-			}
+	const start = position - map.shift;
+	const end = start + Math.max(1, SPAN.exec(generated.slice(position))?.[0].length ?? 1);
+	let volar = volarMaps.get(map);
+	if (!volar) {
+		const SourceMapClass = volarSourceMap();
+		volar = new SourceMapClass(
+			map.mappings.map((mapping) => ({
+				data: mapping.data,
+				generatedLengths: mapping.generatedLengths,
+				generatedOffsets: mapping.generated,
+				lengths: mapping.lengths,
+				sourceOffsets: mapping.source
+			}))
+		);
+		volarMaps.set(map, volar);
+	}
+	for (const [sourceStart] of volar.toSourceRange(start, end, true, (data) => map.shouldReport(data, code)))
+		return positionOf(readFileSync(join(root, map.source), 'utf8'), sourceStart);
 
-		return null;
-	};
-	const startHit = find(at, false) ?? find(at, true);
-	if (!startHit || !find(end, true)) return null;
-	const { index, mapping, start } = startHit;
-
-	return positionOf(source(), (mapping.source[index] ?? 0) + Math.min(at - start, mapping.lengths[index] ?? 0));
+	return null;
 };
 
 let errors = 0;

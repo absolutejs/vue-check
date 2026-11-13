@@ -22,7 +22,8 @@
 	},
 	"dependencies": {
 		"@volar/language-core": "~2.4.0",
-		"@vue/language-core": "~3.3.13"
+		"@vue/language-core": "~3.3.13",
+		"@volar/source-map": "~2.4.0"
 	},
 	"peerDependencies": {
 		"typescript": ">=5.0.0"

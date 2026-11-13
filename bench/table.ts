@@ -17,7 +17,7 @@ type Result = {
 	identical: boolean;
 	runs: number;
 	summary: Summary;
-	typeScript7Changes: string[];
+	typeScript7Changes: { added: string[]; removed: string[] };
 };
 
 const root = join(import.meta.dir, '..');
@@ -49,7 +49,7 @@ lines.push('| Project | vue-tsc | Errors (vue-tsc) | Same as vue-tsc | bun check
 lines.push('|---|---|---|---|---|---|');
 for (const { name, result } of proof)
 	lines.push(
-		`| ${name} | ${result.environment?.vueTsc ?? '?'} | ${result.summary['vue-tsc']?.errors ?? '?'} | ${yes(result.identical)} | ${yes(result.bunCheckMatchesTsc7)} | ${result.typeScript7Changes.length} |`
+		`| ${name} | ${result.environment?.vueTsc ?? '?'} | ${result.summary['vue-tsc']?.errors ?? '?'} | ${yes(result.identical)} | ${yes(result.bunCheckMatchesTsc7)} | ${result.typeScript7Changes.added.length + result.typeScript7Changes.removed.length} |`
 	);
 const environment = results.find(({ result }) => result.environment)?.result.environment;
 if (environment)

@@ -83,14 +83,27 @@ const REFERENCE = /\/\/\/ <reference types="([^"]+)" \/>/g;
 /* The .vue files the project's tsconfig includes, found the way vue-tsc finds
  * them: tsconfig's include/exclude with .vue as an extra extension, so
  * node_modules and excluded folders are never walked. */
-const vueFilesOf = (ts: typeof ownTs, tsconfig: string) => {
+/** Every root file of the project, Vue's files included (every extension
+ * Vue is configured for: .vue, and e.g. .md for VitePress), in the order tsc
+ * (and vue-tsc) lists them. */
+export const parseProject = (ts: typeof ownTs, tsconfig: string, extensions: string[]) => {
 	const config = ts.readConfigFile(tsconfig, ts.sys.readFile).config ?? {};
-	const parsed = ts.parseJsonConfigFileContent(config, ts.sys, dirname(tsconfig), undefined, tsconfig, undefined, [
-		{ extension: '.vue', isMixedContent: true, scriptKind: ts.ScriptKind.Deferred }
-	]);
 
-	return parsed.fileNames.filter((file) => file.endsWith('.vue'));
+	return ts.parseJsonConfigFileContent(
+		config,
+		ts.sys,
+		dirname(tsconfig),
+		undefined,
+		tsconfig,
+		undefined,
+		extensions.map((extension) => ({ extension, isMixedContent: true, scriptKind: ts.ScriptKind.Deferred }))
+	);
 };
+export const projectFilesOf = (ts: typeof ownTs, tsconfig: string, extensions: string[]) =>
+	parseProject(ts, tsconfig, extensions).fileNames;
+/** The extensions vue-tsc checks: all Vue is configured for. */
+export const vueExtensionsOf = (core: typeof ownCore, vueOptions: Parameters<typeof ownCore.getAllExtensions>[0]) =>
+	typeof core.getAllExtensions === 'function' ? core.getAllExtensions(vueOptions) : ['.vue'];
 
 /*
  * A known bug in @vue/language-core's codegen (codegen/template/element.js):
@@ -144,7 +157,15 @@ export type UnparsedFile = { file: string; line: number; message: string };
 export const generate = (options: { only?: string[]; outDir: string; root: string; tsconfig: string }) => {
 	const { core, ts, volar } = projectModules(options.root);
 	const parsed = core.createParsedCommandLine(ts, ts.sys, options.tsconfig);
+	/* As vue-tsc sets up its plugin: versions that keep Vue's global types in
+	 * a file have vue-tsc write it (createGlobalTypesWriter); later ones don't. */
+	const withWriter = core as unknown as {
+		createGlobalTypesWriter?: (vueOptions: unknown, writeFile: typeof ts.sys.writeFile) => unknown;
+	};
+	if (typeof withWriter.createGlobalTypesWriter === 'function')
+		(parsed.vueOptions as { globalTypesPath?: unknown }).globalTypesPath = withWriter.createGlobalTypesWriter(parsed.vueOptions, ts.sys.writeFile);
 	const plugin = core.createVueLanguagePlugin(ts, parsed.options, parsed.vueOptions, (id: string) => id);
+	const extensions = vueExtensionsOf(core, parsed.vueOptions);
 	const writing = !options.only;
 	if (writing) {
 		rmSync(options.outDir, { force: true, recursive: true });
@@ -152,10 +173,12 @@ export const generate = (options: { only?: string[]; outDir: string; root: strin
 	}
 	const maps: Record<string, SourceMap> = {};
 	const unparsed: UnparsedFile[] = [];
-	const files = options.only ?? vueFilesOf(ts, options.tsconfig);
+	const files =
+		options.only ?? projectFilesOf(ts, options.tsconfig, extensions).filter((file) => extensions.some((extension) => file.endsWith(extension)));
 	for (const file of files) {
 		const text = readFileSync(file, 'utf8');
-		const code = plugin.createVirtualCode?.(file, 'vue', ts.ScriptSnapshot.fromString(text), {
+		const languageId = plugin.getLanguageId?.(file) ?? 'vue';
+		const code = plugin.createVirtualCode?.(file, languageId, ts.ScriptSnapshot.fromString(text), {
 			getAssociatedScript: () => undefined
 		});
 		if (!code) continue;
@@ -200,5 +223,5 @@ export const generate = (options: { only?: string[]; outDir: string; root: strin
 			};
 		}
 	}
-	return { core, maps, ts, unparsed };
+	return { core, extensions, maps, ts, unparsed };
 };

@@ -4,9 +4,9 @@
 		"containerMemoryLimit": "10 GB",
 		"cpu": "Intel(R) Core(TM) Ultra 7 155U",
 		"node": "v26.3.0",
-		"projectTypeScript": "6.0.3",
+		"projectTypeScript": "Version 6.0.3",
 		"totalMemoryGB": 12,
-		"tsc7": "7.0.2",
+		"tsc7": "Version 7.0.2",
 		"vueTsc": "3.1.5"
 	},
 	"invalidRuns": {
@@ -14,6 +14,7 @@
 		"vue-check": [],
 		"vue-check (1 thread)": []
 	},
+	"oraclesFinished": true,
 	"cores": 8,
 	"identical": true,
 	"bunCheckMatchesTsc7": true,
@@ -21,30 +22,59 @@
 		"onlyBunCheck": [],
 		"onlyTsc7": []
 	},
-	"onlyVueCheck": [],
-	"onlyVueTsc": [],
-	"typeScript7Changes": [
-		"packages/components/popper/src/trigger.vue(111,15): error TS2769: No overload matches this call.",
-		"packages/components/popper/src/trigger.vue(161,11): error TS2769: No overload matches this call.",
-		"packages/components/popper/src/trigger.vue(97,15): error TS2769: No overload matches this call."
-	],
+	"endToEnd": {
+		"onlyExpected": [],
+		"onlyVueCheck": []
+	},
+	"typeScript7Changes": {
+		"added": [
+			"packages/components/popper/src/trigger.vue(111,15): error TS2769: No overload matches this call.",
+			"packages/components/popper/src/trigger.vue(161,11): error TS2769: No overload matches this call.",
+			"packages/components/popper/src/trigger.vue(97,15): error TS2769: No overload matches this call."
+		],
+		"removed": []
+	},
+	"vueHandling": {
+		"onlyVueCheck": [],
+		"onlyVueTsc": []
+	},
 	"project": "/project",
-	"runs": 5,
+	"runs": 1,
 	"summary": {
 		"vue-tsc": {
 			"errors": 1,
-			"medianPeakRssMB": 1225,
-			"medianWallS": 15.91
+			"medianPeakRssMB": 1224,
+			"medianWallS": 16.68
 		},
 		"vue-check": {
 			"errors": 4,
-			"medianPeakRssMB": 564,
-			"medianWallS": 2.64
+			"medianPeakRssMB": 370,
+			"medianWallS": 4.71,
+			"phases": {
+				"checkMB": 260,
+				"checkS": 0.77,
+				"codegenMB": 323,
+				"codegenS": 2.12,
+				"mapMB": 370,
+				"regeneratedFiles": 165,
+				"mapS": 1.78,
+				"vueFiles": 165
+			}
 		},
 		"vue-check (1 thread)": {
 			"errors": 4,
-			"medianPeakRssMB": 511,
-			"medianWallS": 3.5
+			"medianPeakRssMB": 368,
+			"medianWallS": 6.04,
+			"phases": {
+				"checkMB": 225,
+				"checkS": 2.04,
+				"codegenMB": 317,
+				"codegenS": 2.31,
+				"mapMB": 368,
+				"regeneratedFiles": 165,
+				"mapS": 1.65,
+				"vueFiles": 165
+			}
 		}
 	}
 }
