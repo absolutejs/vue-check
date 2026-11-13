@@ -135,15 +135,25 @@ export const repairGenerated = (text: string) => repairEmptyHandlers(repairProps
 
 export type UnparsedFile = { file: string; line: number; message: string };
 
-export const generate = (options: { outDir: string; root: string; tsconfig: string }) => {
+/**
+ * Generates the TypeScript for the project's .vue files and writes it to
+ * outDir. With `only` (absolute .vue paths), it writes nothing and returns
+ * just those files' maps: codegen is deterministic, so regenerating a file
+ * gives the same text and offsets the check saw.
+ */
+export const generate = (options: { only?: string[]; outDir: string; root: string; tsconfig: string }) => {
 	const { core, ts, volar } = projectModules(options.root);
 	const parsed = core.createParsedCommandLine(ts, ts.sys, options.tsconfig);
 	const plugin = core.createVueLanguagePlugin(ts, parsed.options, parsed.vueOptions, (id: string) => id);
-	rmSync(options.outDir, { force: true, recursive: true });
-	mkdirSync(options.outDir, { recursive: true });
+	const writing = !options.only;
+	if (writing) {
+		rmSync(options.outDir, { force: true, recursive: true });
+		mkdirSync(options.outDir, { recursive: true });
+	}
 	const maps: Record<string, SourceMap> = {};
 	const unparsed: UnparsedFile[] = [];
-	for (const file of vueFilesOf(ts, options.tsconfig)) {
+	const files = options.only ?? vueFilesOf(ts, options.tsconfig);
+	for (const file of files) {
 		const text = readFileSync(file, 'utf8');
 		const code = plugin.createVirtualCode?.(file, 'vue', ts.ScriptSnapshot.fromString(text), {
 			getAssociatedScript: () => undefined
@@ -160,14 +170,16 @@ export const generate = (options: { outDir: string; root: string; tsconfig: stri
 				REFERENCE,
 				(_match, reference: string) => `/// <reference path="${resolve(dirname(file), reference)}" />`
 			);
-			mkdirSync(dirname(target), { recursive: true });
-			writeFileSync(target, written);
+			if (writing) {
+				mkdirSync(dirname(target), { recursive: true });
+				writeFileSync(target, written);
+			}
 			/* A checker that behaves like tsc stops at any syntax error and checks
 			 * nothing, so every generated file has to parse. Found here, with
 			 * TypeScript's parser (no type-checking), for every file at once. */
 			const parsedFile = ts.createSourceFile(target, written, ts.ScriptTarget.Latest, false, extension === '.tsx' ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
 			const syntax = (parsedFile as unknown as { parseDiagnostics?: { messageText: unknown; start?: number }[] }).parseDiagnostics ?? [];
-			for (const diagnostic of syntax.slice(0, 1))
+			for (const diagnostic of writing ? syntax.slice(0, 1) : [])
 				unparsed.push({
 					file: relative(options.root, file),
 					line: parsedFile.getLineAndCharacterOfPosition(diagnostic.start ?? 0).line + 1,
@@ -188,8 +200,5 @@ export const generate = (options: { outDir: string; root: string; tsconfig: stri
 			};
 		}
 	}
-	// For debugging only: the in-memory maps (with Volar's filter functions) are what the CLI uses.
-	writeFileSync(join(options.outDir, 'maps.json'), JSON.stringify(maps, (key, value) => (key === 'data' ? undefined : value)));
-
-	return { maps, unparsed };
+	return { core, maps, ts, unparsed };
 };

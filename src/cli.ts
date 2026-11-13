@@ -1,19 +1,24 @@
 #!/usr/bin/env bun
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import ts from 'typescript';
-import { generate, type SourceMap } from './generate';
+import type { SourceMap, UnparsedFile } from './generate';
+import { deserialize, type Serialized } from './serialize';
 
 /*
  * vue-check: vue-tsc's errors, from Bun's native TypeScript checker.
  *
- *   1. generate.ts writes the TypeScript Vue's codegen makes for each .vue
- *      file into .vue-check/ (the same code vue-tsc checks).
+ *   1. codegen.ts (its own process) writes the TypeScript Vue's codegen makes
+ *      for each .vue file into .vue-check/ (the same code vue-tsc checks), and
+ *      exits, returning its memory.
  *   2. `bun check` checks the project and those files together: rootDirs
  *      joins .vue-check/ to the project, so `import X from './X.vue'` finds
  *      `X.vue.ts` and .ts files see components' real types.
  *   3. Errors in generated files are mapped back to the .vue file's line and
- *      column, and printed the way vue-tsc prints them.
+ *      column, and printed the way vue-tsc prints them. Only the files with
+ *      errors are regenerated for this (codegen is deterministic).
+ *
+ * Each step runs after the previous one has exited, so the peak memory is
+ * the largest step, not their sum.
  *
  *   vue-check [-p tsconfig.json] [--threads=N]
  */
@@ -33,32 +38,30 @@ if (!existsSync(tsconfig)) {
 	process.exit(2);
 }
 const outDir = join(root, '.vue-check');
-const { maps, unparsed: unparsedFiles } = generate({ outDir, root, tsconfig });
+/* VUE_CHECK_PHASES=<file> writes how long each step took: codegen and the
+ * check (each its own process) and mapping errors back (this one). */
+const phasesFile = process.env.VUE_CHECK_PHASES;
+
+const codegenStarted = performance.now();
+const codegen = Bun.spawnSync([process.execPath, join(import.meta.dir, 'codegen.ts'), root, tsconfig], {
+	cwd: root,
+	stderr: 'inherit',
+	stdout: 'inherit'
+});
+const codegenMs = performance.now() - codegenStarted;
+if (codegen.exitCode !== 0) {
+	console.error('vue-check: Vue codegen failed (above), so the project was NOT type-checked.');
+	process.exit(3);
+}
+const codegenResult = JSON.parse(readFileSync(join(outDir, 'codegen.json'), 'utf8')) as Serialized & { unparsed: UnparsedFile[] };
+const unparsedFiles = codegenResult.unparsed;
 if (unparsedFiles.length > 0) {
 	for (const item of unparsedFiles)
 		console.error(`vue-check: the TypeScript generated for ${item.file} doesn't parse (generated line ${item.line}: ${item.message}).`);
 	console.error('vue-check: the project was NOT type-checked. Please report the file(s) above.');
 	process.exit(3);
 }
-
-/* The project's own options, plus the generated tree as one directory with it. */
 const checkConfig = join(outDir, 'tsconfig.json');
-// Read the way tsc reads it: comments and trailing commas allowed.
-const projectConfig = (ts.readConfigFile(tsconfig, ts.sys.readFile).config ?? {}) as { exclude?: string[]; include?: string[] };
-const include = (projectConfig.include ?? ['**/*']).map((pattern) => join('..', pattern));
-// tsc's default excludes are relative to the config's folder, which is now .vue-check/.
-const exclude = (projectConfig.exclude ?? ['node_modules', 'bower_components', 'jspm_packages']).map((pattern) =>
-	join('..', pattern)
-);
-writeFileSync(
-	checkConfig,
-	JSON.stringify({
-		compilerOptions: { allowArbitraryExtensions: true, rootDirs: [root, outDir] },
-		extends: tsconfig,
-		exclude,
-		include: [...include, './**/*.ts', './**/*.tsx']
-	})
-);
 
 const threads = argument('--threads');
 /* Anything else is a compiler option for bun check (e.g. --skipLibCheck), as vue-tsc passes them to tsc. */
@@ -74,12 +77,42 @@ const passThrough = process.argv.slice(2).filter((value, index, all) => {
  * codegen and mapping, only the checker differs. The benchmark uses real
  * tsc 7 this way to prove bun check agrees with TypeScript 7. */
 const oracleTsc = process.env.VUE_CHECK_TSC;
+const checkStarted = performance.now();
 const checked = Bun.spawnSync(
 	oracleTsc
 		? [oracleTsc, '-p', checkConfig, '--noEmit', '--pretty', 'false', ...passThrough]
 		: [process.execPath, 'check', '-p', checkConfig, '--no-pretty', '--all', ...(threads ? [`--threads=${threads}`] : []), ...passThrough],
 	{ cwd: root, stderr: 'pipe', stdout: 'pipe' }
 );
+const checkMs = performance.now() - checkStarted;
+const mapStarted = performance.now();
+
+const ERROR_LINE = /^(.+?)\((\d+),(\d+)\): (error|warning) (TS\d+): (.*)$/;
+const lines = checked.stdout.toString().split('\n');
+const fileOf = (rawFile: string) => relative(root, resolve(root, rawFile));
+/* The maps, as data. A file whose rules aren't all data (see serialize.ts),
+ * or with an error code the fixed rules weren't evaluated for, is
+ * regenerated and decided by Volar itself, as vue-tsc would. */
+const knownCodes = new Set(codegenResult.knownCodes);
+const maps: Record<string, SourceMap> = {};
+const regenerate = new Set<string>();
+for (const line of lines) {
+	const match = ERROR_LINE.exec(line);
+	if (!match) continue;
+	const file = fileOf(match[1] ?? '');
+	const serial = codegenResult.maps[file];
+	if (!serial) continue;
+	if (serial.regenerate || !knownCodes.has(Number((match[5] ?? '').replace('TS', '')))) regenerate.add(file);
+	else maps[file] ??= deserialize(serial, codegenResult.rules);
+}
+if (regenerate.size > 0) {
+	const sources = [...regenerate].map((file) => join(root, codegenResult.maps[file]?.source ?? ''));
+	const live = (await import('./generate')).generate({ only: sources, outDir, root, tsconfig }).maps;
+	for (const file of regenerate) {
+		const map = live[file];
+		if (map) maps[file] = map;
+	}
+}
 
 const offsetOf = (text: string, line: number, column: number) => {
 	const lines = text.split('\n');
@@ -132,17 +165,16 @@ const sourcePosition = (file: string, map: SourceMap, line: number, column: numb
 	return positionOf(source(), (mapping.source[index] ?? 0) + Math.min(at - start, mapping.lengths[index] ?? 0));
 };
 
-const ERROR_LINE = /^(.+?)\((\d+),(\d+)\): (error|warning) (TS\d+): (.*)$/;
 let errors = 0;
 const unparsed = new Set<string>();
-for (const line of checked.stdout.toString().split('\n')) {
+for (const line of lines) {
 	const match = ERROR_LINE.exec(line);
 	if (!match) {
 		if (line.startsWith(' ') && errors > 0) console.log(line);
 		continue;
 	}
 	const [, rawFile = '', rawLine = '0', rawColumn = '0', severity, code, message] = match;
-	const file = relative(root, resolve(root, rawFile));
+	const file = fileOf(rawFile);
 	const map = maps[file];
 	/* A syntax error in generated code means nothing was type-checked (a
 	 * checker stops at one, as tsc does), whether or not vue-tsc would show
@@ -156,6 +188,17 @@ for (const line of checked.stdout.toString().split('\n')) {
 	errors++;
 	console.log(`${map ? map.source : file}(${position.line},${position.column}): ${severity} ${code}: ${message}`);
 }
+if (phasesFile)
+	writeFileSync(
+		phasesFile,
+		JSON.stringify({
+			checkMs,
+			codegenMs,
+			mapMs: performance.now() - mapStarted,
+			regeneratedFiles: regenerate.size,
+			vueFiles: Object.keys(codegenResult.maps).length
+		})
+	);
 if (unparsed.size > 0) {
 	console.error(
 		`vue-check: the TypeScript generated for ${[...unparsed].join(', ')} doesn't parse, so the project was NOT type-checked. Please report it with that file.`

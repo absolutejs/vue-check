@@ -7,13 +7,18 @@
 	"bin": {
 		"vue-check": "./src/cli.ts"
 	},
-	"files": ["src", "LICENSE", "README.md"],
+	"files": [
+		"src",
+		"LICENSE",
+		"README.md"
+	],
 	"engines": {
 		"bun": ">=1.4.3"
 	},
 	"scripts": {
 		"bench": "bun bench/run.ts",
-		"test": "bun test"
+		"test": "bun test",
+		"typecheck": "bun check"
 	},
 	"dependencies": {
 		"@volar/language-core": "~2.4.0",
