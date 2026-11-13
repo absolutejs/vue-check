@@ -18,7 +18,7 @@ import { serialize } from './serialize';
 
 const [root = process.cwd(), tsconfig = join(root, 'tsconfig.json')] = process.argv.slice(2);
 const outDir = join(root, '.vue-check');
-const { core, extensions, maps, ts: projectTs, unparsed } = generate({ outDir, root, tsconfig });
+const { core, extensions, maps, references, ts: projectTs, unparsed } = generate({ outDir, root, tsconfig });
 
 /* A generated twin resolves imports from its own folder: bare imports walk up
  * node_modules folders, and the nearest package.json sets a file's module
@@ -39,6 +39,17 @@ for (const map of Object.values(maps)) {
 		if (folder === parse(folder).root) break;
 	}
 }
+
+/* Each relative reference directive's target, at the place the generated
+ * file looks for it (after the folder links, so a target under node_modules
+ * is already reached through them). */
+for (const { link, real } of references)
+	for (const suffix of ['', '.d.ts', '.ts', '/index.d.ts']) {
+		if (!existsSync(real + suffix) || existsSync(link + suffix)) continue;
+		mkdirSync(dirname(link + suffix), { recursive: true });
+		symlinkSync(real + suffix, link + suffix);
+		break;
+	}
 
 /* The project's own options, plus the generated tree as one directory with
  * it. The root files are listed explicitly, in the order tsc lists the

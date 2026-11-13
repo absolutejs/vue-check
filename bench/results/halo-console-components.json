@@ -11,16 +11,12 @@
 	},
 	"invalidRuns": {
 		"vue-tsc": [],
-		"vue-check": [
-			3
-		],
-		"vue-check (1 thread)": [
-			3
-		]
+		"vue-check": [],
+		"vue-check (1 thread)": []
 	},
-	"oraclesFinished": false,
+	"oraclesFinished": true,
 	"cores": 8,
-	"identical": false,
+	"identical": true,
 	"bunCheckMatchesTsc7": true,
 	"bunVsTsc7": {
 		"onlyBunCheck": [],
@@ -48,14 +44,14 @@
 		},
 		"vue-check": {
 			"errors": 0,
-			"medianPeakRssMB": 240,
-			"medianWallS": 1.22,
+			"medianPeakRssMB": 259,
+			"medianWallS": 1.17,
 			"phases": {
-				"checkMB": 101,
-				"checkS": 0.07,
-				"codegenMB": 206,
-				"codegenS": 1.13,
-				"mapMB": 44,
+				"checkMB": 100,
+				"checkS": 0.06,
+				"codegenMB": 225,
+				"codegenS": 1.09,
+				"mapMB": 47,
 				"regeneratedFiles": 0,
 				"mapS": 0.01,
 				"vueFiles": 31
@@ -63,14 +59,14 @@
 		},
 		"vue-check (1 thread)": {
 			"errors": 0,
-			"medianPeakRssMB": 223,
-			"medianWallS": 0.92,
+			"medianPeakRssMB": 231,
+			"medianWallS": 0.86,
 			"phases": {
-				"checkMB": 69,
-				"checkS": 0.16,
-				"codegenMB": 188,
-				"codegenS": 0.74,
-				"mapMB": 40,
+				"checkMB": 70,
+				"checkS": 0.15,
+				"codegenMB": 197,
+				"codegenS": 0.7,
+				"mapMB": 37,
 				"regeneratedFiles": 0,
 				"mapS": 0.01,
 				"vueFiles": 31

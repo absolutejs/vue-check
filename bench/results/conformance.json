@@ -1,0 +1,233 @@
+{
+	"cases": 252,
+	"identical": 251,
+	"vueTscErrors": 87,
+	"sameAsVueTsc": 251,
+	"bunMatchesTsc7": 252,
+	"typeScript7Changes": 13,
+	"failing": [
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": false,
+			"invalid": [],
+			"name": "_failed_#4569",
+			"notes": {
+				"onlyVueCheck": [
+					"main.vue(1,33): error TS4025: Exported variable '__VLS_export' has or is using private name 'Props'."
+				],
+				"onlyVueTsc": [
+					"main.vue(13,7): error TS4025: Exported variable '__VLS_export' has or is using private name 'Props'."
+				],
+				"onlyBunCheck": [],
+				"onlyTsc7": [],
+				"invalid": [],
+				"typeScript7Added": [],
+				"typeScript7Removed": []
+			},
+			"sameAsVueTsc": false,
+			"vueTscErrors": 1
+		}
+	],
+	"withTypeScript7Changes": [
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "_failed_cssModuleDuplicate",
+			"notes": {
+				"typeScript7Added": [
+					"kebab.vue(1,16): error TS2300: Duplicate identifier ''a-b''.",
+					"kebab.vue(5,16): error TS2300: Duplicate identifier ''a-b''."
+				],
+				"typeScript7Removed": [
+					"kebab.vue(1,16): error TS2300: Duplicate identifier 'a-b'.",
+					"kebab.vue(5,16): error TS2300: Duplicate identifier 'a-b'."
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 11
+		},
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "_failed_fragment_props",
+			"notes": {
+				"typeScript7Added": [
+					"main.vue(6,31): error TS2322: Type '{ id: number; }' is not assignable to type 'PropertyKey | undefined'."
+				],
+				"typeScript7Removed": [
+					"main.vue(6,31): error TS2322: Type '{ id: number; }' is not assignable to type 'PropertyKey'."
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 4
+		},
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "#3561",
+			"notes": {
+				"typeScript7Added": [],
+				"typeScript7Removed": [
+					"main.vue(13,13): error TS2345: Argument of type 'any' is not assignable to parameter of type 'never'.",
+					"main.vue(16,16): error TS2345: Argument of type 'any' is not assignable to parameter of type 'never'."
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 2
+		},
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "#5027",
+			"notes": {
+				"typeScript7Added": [],
+				"typeScript7Removed": [
+					"main.vue(2,1): error TS2578: Unused '@ts-expect-error' directive."
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 1
+		},
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "#5157",
+			"notes": {
+				"typeScript7Added": [],
+				"typeScript7Removed": [
+					"main.vue(8,2): error TS2578: Unused '@ts-expect-error' directive."
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 1
+		},
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "#5228",
+			"notes": {
+				"typeScript7Added": [],
+				"typeScript7Removed": [
+					"main.vue(11,4): error TS2345: Argument of type '{}' is not assignable to parameter of type '(Readonly<__VLS_Slots> & __VLS_Slots)[`slot:${string}`]'."
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 1
+		},
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "#5338",
+			"notes": {
+				"typeScript7Added": [],
+				"typeScript7Removed": [
+					"tsconfig.json(4,3): error TS5052: Option 'exactOptionalPropertyTypes' cannot be specified without specifying option 'strictNullChecks'."
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 1
+		},
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "closure-param-defaults",
+			"notes": {
+				"typeScript7Added": [],
+				"typeScript7Removed": [
+					"main.vue(16,2): error TS2578: Unused '@ts-expect-error' directive.",
+					"main.vue(18,2): error TS2578: Unused '@ts-expect-error' directive."
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 2
+		},
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "defineModel",
+			"notes": {
+				"typeScript7Added": [],
+				"typeScript7Removed": [
+					"strict.vue(9,2): error TS2578: Unused '@ts-expect-error' directive."
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 1
+		},
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "events",
+			"notes": {
+				"typeScript7Added": [
+					"strict.vue(4,7): error TS2561: Object literal may only specify known properties, but 'onBarBaz' does not exist in type 'Partial<NonNullable<Partial<{}> & Omit<{ readonly \"onBar-baz\"?: ((_num: number) => any) | undefined; } & VNodeProps & AllowedComponentProps & ComponentCustomProps, never>>>'. Did you mean to write 'onBar-baz'?"
+				],
+				"typeScript7Removed": [
+					"strict.vue(4,7): error TS2561: Object literal may only specify known properties, but 'onBarBaz' does not exist in type 'Partial<NonNullable<Partial<{}> & Omit<{ readonly \"onBar-baz\"?: (_num: number) => any; } & VNodeProps & AllowedComponentProps & ComponentCustomProps, never>>>'. Did you mean to write 'onBar-baz'?"
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 3
+		},
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "unwrapBindingAccess",
+			"notes": {
+				"typeScript7Added": [],
+				"typeScript7Removed": [
+					"main.vue(113,63): error TS1252: Function declarations are not allowed inside blocks in strict mode when targeting 'ES5'. Modules are automatically in strict mode.",
+					"main.vue(193,46): error TS2345: Argument of type 'boolean' is not assignable to parameter of type 'never'.",
+					"main.vue(201,2): error TS2578: Unused '@ts-expect-error' directive.",
+					"main.vue(203,2): error TS2578: Unused '@ts-expect-error' directive.",
+					"main.vue(225,2): error TS2578: Unused '@ts-expect-error' directive.",
+					"main.vue(229,2): error TS2578: Unused '@ts-expect-error' directive.",
+					"main.vue(256,20): error TS2345: Argument of type '{ value: number; }' is not assignable to parameter of type 'never'.",
+					"main.vue(271,27): error TS2345: Argument of type '() => number' is not assignable to parameter of type 'never'.",
+					"main.vue(276,27): error TS2345: Argument of type '() => number' is not assignable to parameter of type 'never'.",
+					"main.vue(283,27): error TS2345: Argument of type '() => number' is not assignable to parameter of type 'never'.",
+					"main.vue(57,27): error TS2345: Argument of type 'boolean' is not assignable to parameter of type 'never'.",
+					"main.vue(65,42): error TS2345: Argument of type 'boolean' is not assignable to parameter of type 'never'.",
+					"main.vue(72,27): error TS2345: Argument of type '(_e: Event) => void' is not assignable to parameter of type 'never'.",
+					"main.vue(91,27): error TS2345: Argument of type '(_e: Event) => void' is not assignable to parameter of type 'never'.",
+					"main.vue(95,27): error TS2345: Argument of type '(_e: Event) => void' is not assignable to parameter of type 'never'."
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 15
+		},
+		{
+			"bunMatchesTsc7": true,
+			"endToEnd": true,
+			"invalid": [],
+			"name": "withDotValue",
+			"notes": {
+				"typeScript7Added": [
+					"main.vue(10,19): error TS2740: Type 'TemplateStringsArray' is missing the following properties from type 'Event': bubbles, cancelBubble, cancelable, composed, and 18 more.",
+					"main.vue(7,24): error TS2740: Type 'TemplateStringsArray' is missing the following properties from type 'Event': bubbles, cancelBubble, cancelable, composed, and 18 more.",
+					"main.vue(8,16): error TS2740: Type 'TemplateStringsArray' is missing the following properties from type 'Event': bubbles, cancelBubble, cancelable, composed, and 18 more.",
+					"main.vue(9,27): error TS2740: Type 'TemplateStringsArray' is missing the following properties from type 'Event': bubbles, cancelBubble, cancelable, composed, and 18 more."
+				],
+				"typeScript7Removed": [
+					"main.vue(10,19): error TS2345: Argument of type 'TemplateStringsArray' is not assignable to parameter of type 'Event'.",
+					"main.vue(7,24): error TS2345: Argument of type 'TemplateStringsArray' is not assignable to parameter of type 'Event'.",
+					"main.vue(8,16): error TS2345: Argument of type 'TemplateStringsArray' is not assignable to parameter of type 'Event'.",
+					"main.vue(9,27): error TS2345: Argument of type 'TemplateStringsArray' is not assignable to parameter of type 'Event'."
+				]
+			},
+			"sameAsVueTsc": true,
+			"vueTscErrors": 9
+		}
+	]
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { existsSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
@@ -23,7 +23,15 @@ const jobs = Number(process.argv.find((value) => value.startsWith('--jobs='))?.s
 const tool = join(import.meta.dir, '..');
 const workspaceRequire = createRequire(join(workspace, 'package.json'));
 const vueTsc = workspaceRequire.resolve('vue-tsc/bin/vue-tsc.js');
-const projectTsc = join(dirname(createRequire(vueTsc).resolve('typescript/package.json')), 'bin/tsc');
+/* The tsc a TypeScript package ships, from its own `bin` (an aliased package
+ * such as @typescript/typescript6 names it tsc6). */
+const tscOf = (packageJson: string) => {
+	const { bin } = JSON.parse(readFileSync(packageJson, 'utf8')) as { bin?: Record<string, string> | string };
+	const entry = typeof bin === 'string' ? bin : (bin?.tsc ?? Object.values(bin ?? {})[0] ?? 'bin/tsc');
+
+	return join(dirname(packageJson), entry);
+};
+const projectTsc = tscOf(createRequire(vueTsc).resolve('typescript/package.json'));
 const tsc7 = join(tool, 'node_modules/@typescript/typescript-linux-x64/lib/tsc');
 const casesDir = join(workspace, 'tsc');
 const cases = readdirSync(casesDir)

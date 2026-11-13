@@ -39,36 +39,36 @@
 	"summary": {
 		"vue-tsc": {
 			"errors": 0,
-			"medianPeakRssMB": 1455,
-			"medianWallS": 16.68
+			"medianPeakRssMB": 1465,
+			"medianWallS": 18.19
 		},
 		"vue-check": {
 			"errors": 0,
-			"medianPeakRssMB": 467,
-			"medianWallS": 3.53,
+			"medianPeakRssMB": 449,
+			"medianWallS": 3.77,
 			"phases": {
-				"checkMB": 397,
-				"checkS": 0.8,
-				"codegenMB": 433,
-				"codegenS": 2.57,
-				"mapMB": 142,
+				"checkMB": 392,
+				"checkS": 0.88,
+				"codegenMB": 400,
+				"codegenS": 2.71,
+				"mapMB": 154,
 				"regeneratedFiles": 0,
-				"mapS": 0.13,
+				"mapS": 0.14,
 				"vueFiles": 376
 			}
 		},
 		"vue-check (1 thread)": {
 			"errors": 0,
-			"medianPeakRssMB": 446,
-			"medianWallS": 4.23,
+			"medianPeakRssMB": 421,
+			"medianWallS": 4.98,
 			"phases": {
-				"checkMB": 362,
-				"checkS": 1.82,
-				"codegenMB": 412,
-				"codegenS": 2.25,
-				"mapMB": 152,
+				"checkMB": 361,
+				"checkS": 2.27,
+				"codegenMB": 387,
+				"codegenS": 2.54,
+				"mapMB": 159,
 				"regeneratedFiles": 0,
-				"mapS": 0.13,
+				"mapS": 0.14,
 				"vueFiles": 376
 			}
 		}

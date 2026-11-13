@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import * as ownSourceMap from '@volar/source-map';
 import type { SourceMap, UnparsedFile } from './generate';
 import { deserialize, type Serialized } from './serialize';
@@ -57,12 +57,6 @@ if (codegen.exitCode !== 0) {
 }
 const codegenResult = JSON.parse(readFileSync(join(outDir, 'codegen.json'), 'utf8')) as Serialized & { unparsed: UnparsedFile[] };
 const unparsedFiles = codegenResult.unparsed;
-if (unparsedFiles.length > 0) {
-	for (const item of unparsedFiles)
-		console.error(`vue-check: the TypeScript generated for ${item.file} doesn't parse (generated line ${item.line}: ${item.message}).`);
-	console.error('vue-check: the project was NOT type-checked. Please report the file(s) above.');
-	process.exit(3);
-}
 const checkConfig = join(outDir, 'tsconfig.json');
 
 const threads = argument('--threads');
@@ -99,6 +93,32 @@ const checked = Bun.spawnSync(
 );
 const checkMs = performance.now() - checkStarted;
 const mapStarted = performance.now();
+
+const configChain = (config: string, seen = new Set<string>()): string[] => {
+	if (seen.has(config) || !existsSync(config)) return [];
+	seen.add(config);
+	const extended = /"extends"\s*:\s*("[^"]+"|\[[^\]]*\])/.exec(readFileSync(config, 'utf8'))?.[1] ?? '';
+	const parents = [...extended.matchAll(/"([^"]+)"/g)].map(([, name = '']) =>
+		name.startsWith('.') ? resolve(dirname(config), name.endsWith('.json') ? name : `${name}.json`) : ''
+	);
+
+	return [config, ...parents.filter(Boolean).flatMap((parent) => configChain(parent, seen))];
+};
+const optionPosition = (message: string) => {
+	const names = [...message.matchAll(/'([A-Za-z]+)'/g)].map(([, name]) => name);
+	for (const config of configChain(tsconfig)) {
+		const text = readFileSync(config, 'utf8');
+		for (const name of names) {
+			const index = text.indexOf(`"${name}"`);
+			if (index < 0) continue;
+			const { column, line } = positionOf(text, index);
+
+			return `${relative(root, config)}(${line},${column})`;
+		}
+	}
+
+	return `${relative(root, tsconfig)}(1,1)`;
+};
 
 /* A message that names a generated file names its Vue file, as vue-tsc's do
  * (its virtual file is the .vue file itself). */
@@ -192,6 +212,55 @@ const volarMaps = new Map<SourceMap, VolarSourceMap>();
  * reports it; otherwise the token there (a name or a string). */
 const SPAN = /^(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/|[\p{L}\p{N}_$]+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/u;
 
+/* The error's length, which tsc-style output leaves out. TypeScript reports
+ * an error on a syntax node, and punctuation isn't one, so the innermost node
+ * that starts where the error starts is its span ({} for an argument, [x] for
+ * a computed name, the identifier for a name). A comment (an unused
+ * @ts-expect-error) isn't a node: its text is the span. TypeScript's parser,
+ * the project's, is loaded only when a generated file has an error. */
+type Ts = typeof import('typescript');
+let parser: Ts | null = null;
+const projectTypeScript = (): Ts => {
+	if (parser) return parser;
+	const projectRequire = createRequire(join(root, 'package.json'));
+	for (const from of ['vue-tsc/package.json', 'package.json'])
+		try {
+			parser = createRequire(projectRequire.resolve(from))('typescript') as Ts;
+
+			return parser;
+		} catch {
+			// Not resolvable from here.
+		}
+	parser = createRequire(import.meta.path)('typescript') as Ts;
+
+	return parser;
+};
+const parsedFiles = new Map<string, import('typescript').SourceFile>();
+const spanAt = (file: string, text: string, position: number, code: string) => {
+	const lexical = SPAN.exec(text.slice(position))?.[0];
+	if (lexical?.startsWith('//') || lexical?.startsWith('/*')) return lexical.length;
+	const ts = projectTypeScript();
+	let sourceFile = parsedFiles.get(file);
+	if (!sourceFile) {
+		const kind = file.endsWith('x') ? (file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.JSX) : file.endsWith('.js') ? ts.ScriptKind.JS : ts.ScriptKind.TS;
+		sourceFile = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
+		parsedFiles.set(file, sourceFile);
+	}
+	/* A syntax error's span is the parser's own diagnostic: exact. */
+	const parseDiagnostics = (sourceFile as unknown as { parseDiagnostics?: { code: number; length: number; start: number }[] }).parseDiagnostics ?? [];
+	const syntax = parseDiagnostics.find((diagnostic) => diagnostic.start === position && String(diagnostic.code) === code);
+	if (syntax) return syntax.length;
+	let found: import('typescript').Node | undefined;
+	const visit = (node: import('typescript').Node) => {
+		if (position < node.getStart(sourceFile) || position >= node.end) return;
+		if (node.getStart(sourceFile) === position) found = node;
+		ts.forEachChild(node, visit);
+	};
+	ts.forEachChild(sourceFile, visit);
+
+	return Math.max(1, found ? found.end - position : (lexical?.length ?? 1));
+};
+
 /**
  * A generated-file error, where vue-tsc would report it: the position in the
  * .vue file, or null when vue-tsc wouldn't report it. Volar's toSourceRange
@@ -202,7 +271,7 @@ const sourcePosition = (file: string, map: SourceMap, line: number, column: numb
 	const generated = readFileSync(join(root, file), 'utf8');
 	const position = offsetOf(generated, line, column);
 	const start = position - map.shift;
-	const end = start + Math.max(1, SPAN.exec(generated.slice(position))?.[0].length ?? 1);
+	const end = start + spanAt(file, generated, position, code);
 	let volar = volarMaps.get(map);
 	if (!volar) {
 		const SourceMapClass = volarSourceMap();
@@ -226,7 +295,6 @@ const sourcePosition = (file: string, map: SourceMap, line: number, column: numb
 let errors = 0;
 /* Every error the checker printed, before mapping drops vue-tsc's hidden ones. */
 let reported = 0;
-const unparsed = new Set<string>();
 for (const line of lines) {
 	const match = ERROR_LINE.exec(line);
 	if (!match) {
@@ -242,14 +310,18 @@ for (const line of lines) {
 	reported++;
 	const [, rawFile = '', rawLine = '0', rawColumn = '0', severity, code, message] = match;
 	const file = fileOf(rawFile);
+	if (file === relative(root, checkConfig)) {
+		/* An option error the generated config inherits: where vue-tsc reports
+		 * it, at the option in the project's own config (or a config it extends). */
+		const at = optionPosition(message ?? '');
+		console.log(`${at}: ${severity} ${code}: ${sourcePaths(message ?? '')}`);
+		errors++;
+		continue;
+	}
 	const map = maps[file];
 	const position = map
 		? sourcePosition(file, map, Number(rawLine), Number(rawColumn), (code ?? '').replace('TS', ''))
 		: { column: Number(rawColumn), line: Number(rawLine) };
-	/* A syntax error in generated code that maps nowhere: the checker stopped
-	 * on codegen's text, so nothing was type-checked. Never hide that. (One
-	 * that maps is the user's own, reported like any error.) */
-	if (map && !position && code?.startsWith('TS1')) unparsed.add(map.source);
 	// Not where vue-tsc reports it: the codegen's own scaffolding.
 	if (!position) continue;
 	errors++;
@@ -266,10 +338,15 @@ if (phasesFile)
 			vueFiles: Object.keys(codegenResult.maps).length
 		})
 	);
-if (unparsed.size > 0) {
-	console.error(
-		`vue-check: the TypeScript generated for ${[...unparsed].join(', ')} doesn't parse, so the project was NOT type-checked. Please report it with that file.`
-	);
+/* Generated code with a syntax error that maps nowhere (an artifact of
+ * codegen, which vue-tsc hides). When any syntax error was reported, the
+ * checker reports only syntax errors, as tsc does for vue-tsc: the output is
+ * vue-tsc's. When none was, vue-tsc would have type-checked and the checker
+ * couldn't: never report that as clean. */
+if (unparsedFiles.length > 0 && errors === 0) {
+	for (const item of unparsedFiles)
+		console.error(`vue-check: the TypeScript generated for ${item.file} doesn't parse (generated line ${item.line}: ${item.message}).`);
+	console.error('vue-check: the project was NOT type-checked. Please report the file(s) above.');
 	process.exit(3);
 }
 /* The checker failed without printing a single error: it didn't check (a

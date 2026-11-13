@@ -183,11 +183,19 @@ const withChecker = async (tsc: string) => {
 
 	return { errors: errorsOf(stdout), exitCode, finished: existsSync(phasesFile) && [0, 2].includes(exitCode) };
 };
+/* The tsc a TypeScript package ships, from its own `bin` (an aliased package
+ * such as @typescript/typescript6 names it tsc6). */
+const tscOf = (packageJson: string) => {
+	const { bin } = JSON.parse(readFileSync(packageJson, 'utf8')) as { bin?: Record<string, string> | string };
+	const entry = typeof bin === 'string' ? bin : (bin?.tsc ?? Object.values(bin ?? {})[0] ?? 'bin/tsc');
+
+	return join(dirname(packageJson), entry);
+};
 /* The TypeScript vue-tsc runs: resolved from the project's vue-tsc. */
 const projectTsc = (() => {
 	const fromVueTsc = createRequire(projectRequire.resolve('vue-tsc/package.json'));
 
-	return join(dirname(fromVueTsc.resolve('typescript/package.json')), 'bin/tsc');
+	return tscOf(fromVueTsc.resolve('typescript/package.json'));
 })();
 const tsc7 = join(tool, 'node_modules/@typescript/typescript-linux-x64/lib/tsc');
 const withProjectTs = await withChecker(projectTsc);

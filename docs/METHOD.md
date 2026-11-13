@@ -27,8 +27,15 @@ is returned to the system before the check starts.
 way `vue-tsc` loads it, and sets it up as `vue-tsc` does: the project's `vueCompilerOptions`, Vue's
 global types written where that version expects them, and every file extension Vue is configured for
 (`.vue`, plus for example `.md` in a VitePress project). The TypeScript it generates is the code
-`vue-tsc` checks. It's written to `.vue-check/`, mirroring the project's layout (`src/App.vue` becomes
-`.vue-check/src/App.vue.ts`, or `.vue.tsx` for `lang="tsx"`).
+`vue-tsc` checks, in the language `vue-tsc` gives it (a plain `<script>` is JavaScript).
+
+It generates every Vue file the program reaches, not only the project's own: `vue-tsc` creates a virtual
+file for any Vue file its program resolves, such as a monorepo's workspace packages. Imports are read
+with TypeScript's `preProcessFile` (a scan, not a full parse), from the generated code and from source
+files outside `node_modules`, and resolved as the project resolves them.
+
+Each generated file is written to `.vue-check/` at its source's absolute path (`/app/src/App.vue`
+becomes `.vue-check/app/src/App.vue.ts`).
 
 ### 2. The same program, on Bun's checker
 
@@ -38,25 +45,35 @@ for file:
 - **The same root files, in the same order.** They're listed explicitly, in the order `tsc` lists the
   project's, with each Vue file replaced in place by its generated TypeScript. The order files enter a
   program decides the order the checker creates types, and with it how types print in messages.
-- **The same imports.** `rootDirs` makes the project and `.vue-check/` behave as one directory, so
-  `import Foo from './Foo.vue'` resolves to `Foo.vue.ts`. `rootDirs` covers relative imports only, so
-  each path alias (`@/*`) also gets its `.vue-check/` counterpart:
+- **The same imports.** `rootDirs: ["/", ".vue-check"]` makes every folder and its mirror behave as one,
+  so `import Foo from './Foo.vue'` resolves to `Foo.vue.ts` wherever the two files are. `rootDirs`
+  covers relative imports only, so each path alias (`@/*`) also gets its mirrored counterpart:
 
   ```json
   {
     "compilerOptions": {
-      "rootDirs": ["<project>", "<project>/.vue-check"],
-      "paths": { "@/*": ["<project>/src/*", "<project>/.vue-check/src/*"] }
+      "rootDirs": ["/", "<project>/.vue-check"],
+      "paths": { "@/*": ["<project>/src/*", "<project>/.vue-check/<project>/src/*"] }
     }
   }
   ```
+
+  A generated file resolves its own imports from its folder: bare imports walk up `node_modules`
+  folders, and the nearest `package.json` decides a file's module format. So every folder above a
+  source that has a `node_modules` or a `package.json` gets a link to it at the same place in the
+  mirror, and a generated file resolves each import to exactly the file its source would.
+- **The same options.** The generated config extends the project's. Two options are carried over the
+  way TypeScript 7 needs them: `baseUrl`, which TypeScript 7 has removed, becomes its documented
+  replacement (a catch-all path alias); relative `types` entries stay resolved from the project's
+  config.
 
 `.ts` files therefore see every component's real type, the same as with `vue-tsc`: props, emits, slots
 and generics. Bun's checker implements `rootDirs` and `paths` as `tsc` does, so Bun itself needs no
 change. On vue-pure-admin, `tsc --listFiles` prints the same 3,174 files in the same order for both
 programs.
 
-Then a single `bun check` runs over the whole program, on every core.
+Then a single `bun check` runs over the whole program, on every core, with `--no-script` (so it always
+type-checks, never a project's own `check` script in its place).
 
 ### 3. Errors where vue-tsc reports them
 
@@ -79,16 +96,21 @@ Errors in `.ts` files pass through unchanged. The output format is `vue-tsc`'s:
 
 ### 4. Guarantees
 
-- **Every generated file parses.** A checker that behaves like `tsc` reports only syntax errors when it
-  finds any, and skips type checks. So `vue-check` parses every generated file with TypeScript's parser.
-  Two codegen patterns that `vue-tsc`'s error-tolerant path accepts are normalized to valid TypeScript
-  **without changing the text's length**, so every source-map offset stays exact:
+- **Syntax errors are reported as vue-tsc reports them.** A checker that behaves like `tsc` reports only
+  syntax errors when it finds any, and skips type checks. So `vue-check` parses every generated file
+  with TypeScript's parser. A syntax error that maps back to the user's code (`{{ a + }}`) is theirs:
+  the check runs and reports it, as `vue-tsc` does. Two codegen patterns that `vue-tsc`'s
+  error-tolerant path accepts are normalized to valid TypeScript **without changing the text's
+  length**, so every source-map offset stays exact:
   - `//` inside a string in a component's props copy;
   - an event modifier with an empty handler (`@click.stop=""`).
 
-  If anything else doesn't parse, `vue-check` stops with exit code 3 and names the file. It never prints
-  a clean result for a check that didn't run.
-- **Exit codes as vue-tsc:** 0 for no errors, 2 for errors.
+  Any other syntax error that maps nowhere would stop the checker on codegen's text, so `vue-check`
+  stops with exit code 3 and names the file.
+- **A check that didn't run is never clean.** If the checker fails without printing a single error
+  (a crash, an unreadable config), `vue-check` exits 3. Errors with no position (an invalid option, a
+  missing file) are reported as `tsc` prints them.
+- **Exit codes:** 0 for no errors, 2 for errors (as `vue-tsc`), 3 when the project couldn't be checked.
 
 ## How it's proven
 
@@ -141,6 +163,14 @@ exercise a different part of the mapping:
 
 Template edits alternate between the start and the end of the template. Each planted error must come
 out identically from every leg of the differential.
+
+### Vue's own conformance suite
+
+`vuejs/language-tools` keeps a test project per behavior and per fixed bug in `test-workspace/tsc`:
+the cases `vue-tsc`'s own type-check test runs. Most assert their errors in place with
+`@ts-expect-error` and `@vue-expect-error`, so a clean result proves both that nothing is reported
+wrongly and that every expected error is there; the rest leave known errors that must come out
+identically. `bench/conformance.ts` runs every case through the same four-way differential.
 
 ### What a valid run is
 

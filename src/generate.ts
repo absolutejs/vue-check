@@ -78,7 +78,7 @@ export type SourceMap = {
 	shouldReport: (data: unknown, code: string) => boolean;
 };
 
-const REFERENCE = /\/\/\/ <reference types="([^"]+)" \/>/g;
+const REFERENCE = /^\/\/\/\s*<reference\s+(path|types)\s*=\s*["']([^"']+)["']/gm;
 const EXTENSIONS: Record<string, '.js' | '.jsx' | '.ts' | '.tsx'> = {
 	javascript: '.js',
 	javascriptreact: '.jsx',
@@ -183,6 +183,7 @@ export const generate = (options: { only?: string[]; outDir: string; root: strin
 	}
 	const maps: Record<string, SourceMap> = {};
 	const unparsed: UnparsedFile[] = [];
+	const references: { link: string; real: string }[] = [];
 	const isVue = (file: string) => extensions.some((extension) => file.endsWith(extension));
 	const projectFiles = options.only ? [] : projectFilesOf(ts, options.tsconfig, extensions);
 	/*
@@ -259,11 +260,14 @@ export const generate = (options: { only?: string[]; outDir: string; root: strin
 			const target = mirrorOf(options.outDir, file) + extension;
 			const original = embedded.snapshot.getText(0, embedded.snapshot.getLength());
 			if (!options.only) scan(file, original);
-			// Helper types are referenced relative to the .vue file's folder; the copy lives elsewhere.
-			const written = repairGenerated(original).replace(
-				REFERENCE,
-				(_match, reference: string) => `/// <reference path="${resolve(dirname(file), reference)}" />`
-			);
+			const written = repairGenerated(original);
+			/* A relative reference directive (Vue's global types, a user's
+			 * `/// <reference path="./globals.d.ts" />`) resolves from the
+			 * generated file's folder. The text stays as written; codegen.ts
+			 * links each target into the mirror, as it links node_modules. */
+			for (const [, kind, reference = ''] of written.matchAll(REFERENCE))
+				if (reference.startsWith('./') || reference.startsWith('../') || (kind === 'path' && !isAbsolute(reference)))
+					references.push({ link: resolve(dirname(target), reference), real: resolve(dirname(file), reference) });
 			if (writing) {
 				mkdirSync(dirname(target), { recursive: true });
 				writeFileSync(target, written);
@@ -314,5 +318,5 @@ export const generate = (options: { only?: string[]; outDir: string; root: strin
 			};
 		}
 	}
-	return { core, extensions, maps, ts, unparsed };
+	return { core, extensions, maps, references, ts, unparsed };
 };
