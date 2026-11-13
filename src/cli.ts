@@ -297,6 +297,7 @@ const sourcePosition = (file: string, map: SourceMap, line: number, column: numb
 let errors = 0;
 /* Every error the checker printed, before mapping drops vue-tsc's hidden ones. */
 let reported = 0;
+let droppedJavaScriptGrammar = false;
 for (const line of lines) {
 	const match = ERROR_LINE.exec(line);
 	if (!match) {
@@ -325,7 +326,10 @@ for (const line of lines) {
 		? sourcePosition(file, map, Number(rawLine), Number(rawColumn), (code ?? '').replace('TS', ''))
 		: { column: Number(rawColumn), line: Number(rawLine) };
 	// Not where vue-tsc reports it: the codegen's own scaffolding.
-	if (!position) continue;
+	if (!position) {
+		if (map && /^TS8\d{3}$/.test(code ?? '')) droppedJavaScriptGrammar = true;
+		continue;
+	}
 	errors++;
 	console.log(`${map ? map.source : file}(${position.line},${position.column}): ${severity} ${code}: ${sourcePaths(message ?? '')}`);
 }
@@ -345,6 +349,20 @@ if (phasesFile)
  * checker reports only syntax errors, as tsc does for vue-tsc: the output is
  * vue-tsc's. When none was, vue-tsc would have type-checked and the checker
  * couldn't: never report that as clean. */
+const fatal = unparsedFiles.filter((item) => item.fatal);
+if (fatal.length > 0) {
+	for (const item of fatal) console.error(`vue-check: ${item.file}: ${item.message}.`);
+	console.error('vue-check: the project was NOT type-checked as vue-tsc would.');
+	process.exit(3);
+}
+/* The checker stopped on JavaScript grammar errors (TS8xxx are syntax errors
+ * to tsc) in generated code that vue-tsc hides: nothing was type-checked. */
+if (droppedJavaScriptGrammar && errors === 0) {
+	console.error(
+		'vue-check: the checker stopped on TypeScript-only syntax in generated JavaScript, so the project was NOT type-checked. Please report it.'
+	);
+	process.exit(3);
+}
 if (unparsedFiles.length > 0 && errors === 0) {
 	for (const item of unparsedFiles)
 		console.error(`vue-check: the TypeScript generated for ${item.file} doesn't parse (generated line ${item.line}: ${item.message}).`);

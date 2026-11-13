@@ -1,0 +1,13 @@
+# The benchmark corpus: name|repository|commit|project dir|workspace root (- for none)|tsconfig|vue-tsc args
+# bench/setup-corpus.sh clones and installs it; bench/sweep.sh runs the differential over it.
+soybean-admin|soybeanjs/soybean-admin|d2dfefd|soybean-admin|-|tsconfig.json|--skipLibCheck
+naive-ui-admin|jekip/naive-ui-admin|c9db4cd|naive-ui-admin|-|tsconfig.json|--skipLibCheck
+slidev|slidevjs/slidev|437f139|slidev|-|tsconfig.json|--skipLibCheck
+vitepress-client|vuejs/vitepress|40b2e09|vitepress|-|tsconfig.client.json|--skipLibCheck
+vitepress-docs|vuejs/vitepress|40b2e09|vitepress|-|docs/tsconfig.json|--skipLibCheck
+halo-console-components|halo-dev/halo|cd17256|halo/ui/packages/components|halo/ui|tsconfig.app.json|--skipLibCheck --composite false
+vue-element-plus-admin|kailong321200875/vue-element-plus-admin|9047610|vue-element-plus-admin/apps/admin|vue-element-plus-admin|tsconfig.json|--skipLibCheck
+vue-vben-admin|vbenjs/vue-vben-admin|53b47f8|vue-vben-admin/apps/web-antdv-next|vue-vben-admin|tsconfig.json|--skipLibCheck
+gitea|go-gitea/gitea|53aafd7|gitea|-|tsconfig.json|--skipLibCheck
+vue-pure-admin|pure-admin/vue-pure-admin|fae75ad|vue-pure-admin|-|tsconfig.json|--skipLibCheck
+element-plus|element-plus/element-plus|2cc2523|element-plus|-|tsconfig.web.json|--skipLibCheck --composite false

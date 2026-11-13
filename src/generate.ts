@@ -14,18 +14,30 @@ const projectModules = (root: string) => {
 	/* Resolved through the project's own vue-tsc when it has one (package
 	 * managers often nest @vue/language-core under it), then the project,
 	 * then ours. */
+	const installed = (requirer: NodeJS.Require, name: string) => {
+		const resolved = requirer.resolve(name);
+		if (!resolved.includes('/node_modules/')) throw new Error(`${name} is not installed here`);
+
+		return resolved;
+	};
 	const fromVueTsc = (() => {
 		try {
-			return createRequire(projectRequire.resolve('vue-tsc/package.json'));
+			return createRequire(installed(projectRequire, 'vue-tsc/package.json'));
 		} catch {
 			return null;
 		}
 	})();
-	const load = <T>(name: string, fallback: T, requirers: (NodeJS.Require | null)[]): T => {
+	/* Only what the project installed: Bun's require falls back to its global
+	 * install cache for a package the project doesn't have, which could hand
+	 * back any version (for typescript, TypeScript 7's native build, which
+	 * has no JavaScript API). */
+	const load = <T>(name: string, fallback: T, requirers: (NodeJS.Require | null)[], usable: (value: T) => boolean = () => true): T => {
 		for (const requirer of requirers) {
 			if (!requirer) continue;
 			try {
-				return requirer(name) as T;
+				installed(requirer, name);
+				const loaded = requirer(name) as T;
+				if (usable(loaded)) return loaded;
 			} catch {
 				// Not resolvable from here: try the next.
 			}
@@ -37,7 +49,7 @@ const projectModules = (root: string) => {
 		for (const requirer of [fromVueTsc, projectRequire]) {
 			if (!requirer) continue;
 			try {
-				return createRequire(requirer.resolve('@vue/language-core/package.json'));
+				return createRequire(installed(requirer, '@vue/language-core/package.json'));
 			} catch {
 				// Not here.
 			}
@@ -48,7 +60,7 @@ const projectModules = (root: string) => {
 
 	return {
 		core: load<typeof ownCore>('@vue/language-core', ownCore, [fromVueTsc, projectRequire]),
-		ts: load<typeof ownTs>('typescript', ownTs, [projectRequire, fromVueTsc]),
+		ts: load<typeof ownTs>('typescript', ownTs, [projectRequire, fromVueTsc], (value) => typeof value?.sys?.readFile === 'function'),
 		volar: load<typeof ownVolar>('@volar/language-core', ownVolar, [coreRequire, fromVueTsc, projectRequire])
 	};
 };
@@ -153,7 +165,53 @@ export const repairEmptyHandlers = (text: string) => text.replace(EMPTY_HANDLER,
 /** Every known codegen repair, each keeping the text's length. */
 export const repairGenerated = (text: string) => repairEmptyHandlers(repairPropsCopy(text));
 
-export type UnparsedFile = { file: string; line: number; message: string };
+/** A file the checker can't check as vue-tsc does. `fatal`: stop whatever
+ * else was reported. */
+export type UnparsedFile = { fatal?: true; file: string; line: number; message: string };
+
+/**
+ * The language a generated file is checked in. A plain <script> is
+ * JavaScript, as vue-tsc's virtual file is. But some versions of Vue's
+ * codegen (3.2) write typed scaffolding (declare, type aliases, casts) into
+ * the JavaScript of a <script setup> without lang="ts": a checker that
+ * behaves like tsc reports that as JavaScript grammar errors, which are
+ * syntax errors to it, and checks nothing, where vue-tsc hides them. Without
+ * checkJs, vue-tsc reports nothing in such a file and only uses its types, so
+ * it's checked as TypeScript with its own errors off. With checkJs it would
+ * be checked as JavaScript, which TypeScript can't stand in for.
+ */
+export const twinLanguage = (ts: typeof ownTs, extension: '.js' | '.jsx' | '.ts' | '.tsx', generated: string, checksJs: boolean) => {
+	if ((extension !== '.js' && extension !== '.jsx') || !hasTypeScriptSyntax(ts, generated, extension === '.jsx'))
+		return { extension, prefix: '', unsupported: false };
+
+	return { extension: extension === '.jsx' ? '.tsx' : '.ts', prefix: '// @ts-nocheck\n', unsupported: checksJs };
+};
+
+/* Whether code has syntax only TypeScript allows: a type, a non-null
+ * assertion, or a `declare`. (Parsed as TypeScript, where JSDoc types aren't
+ * syntax nodes.) */
+const hasTypeScriptSyntax = (ts: typeof ownTs, text: string, jsx: boolean) => {
+	const sourceFile = ts.createSourceFile('check.ts', text, ts.ScriptTarget.Latest, false, jsx ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+	let found = false;
+	const visit = (node: ownTs.Node) => {
+		if (found) return;
+		if (
+			ts.isTypeNode(node) ||
+			ts.isNonNullExpression(node) ||
+			ts.isTypeAliasDeclaration(node) ||
+			ts.isInterfaceDeclaration(node) ||
+			(ts.canHaveModifiers(node) && (ts.getModifiers(node) ?? []).some((modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword))
+		) {
+			found = true;
+
+			return;
+		}
+		ts.forEachChild(node, visit);
+	};
+	ts.forEachChild(sourceFile, visit);
+
+	return found;
+};
 
 /** Where a file's generated twin lives: its absolute path, under outDir (see
  * codegen.ts: rootDirs ["/", outDir] joins every file to its twin). */
@@ -257,11 +315,20 @@ export const generate = (options: { only?: string[]; outDir: string; root: strin
 			if (!embedded.id.startsWith('script_') || embedded.id === 'script_raw') continue;
 			/* The generated code's own language: a plain <script> is JavaScript, as
 			 * vue-tsc's virtual file is (so checkJs decides, not us). */
-			const extension = EXTENSIONS[embedded.languageId] ?? '.ts';
-			const target = mirrorOf(options.outDir, file) + extension;
 			const original = embedded.snapshot.getText(0, embedded.snapshot.getLength());
+			const twin = twinLanguage(ts, EXTENSIONS[embedded.languageId] ?? '.ts', original, Boolean(parsed.options.checkJs) || /@ts-check\b/.test(text));
+			if (twin.unsupported)
+				unparsed.push({
+					fatal: true,
+					file: relative(options.root, file),
+					line: 1,
+					message:
+						'its JavaScript <script setup> is type-checked as JavaScript (checkJs or @ts-check), and Vue’s codegen writes TypeScript into it, which vue-check cannot check as vue-tsc does yet'
+				});
+			const { extension, prefix } = twin;
+			const target = mirrorOf(options.outDir, file) + extension;
 			if (!options.only) scan(file, original);
-			const written = repairGenerated(original);
+			const written = prefix + repairGenerated(original);
 			/* A relative reference directive (Vue's global types, a user's
 			 * `/// <reference path="./globals.d.ts" />`) resolves from the
 			 * generated file's folder. The text stays as written; codegen.ts

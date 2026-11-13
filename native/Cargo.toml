@@ -1,0 +1,12 @@
+[package]
+name = "vue-check-codegen"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+oxc_allocator = "0.139.0"
+oxc_ast = "0.139.0"
+oxc_parser = "0.139.0"
+oxc_span = "0.139.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"

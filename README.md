@@ -124,6 +124,11 @@ Environment: Intel(R) Core(TM) Ultra 7 155U, 12 GB RAM (container limit 10 GB), 
   in the URL into the start of a comment that hides the props after it. `vue-check` reports the error,
   as `vue-tsc` does when `count` comes before the URL.
 
+- **`checkJs` with a JavaScript `<script setup>` on vue-tsc 3.2.** That version of Vue's codegen writes
+  TypeScript into a JavaScript component. Without `checkJs`, vue-check checks it the way vue-tsc does
+  (it reports nothing in that file and uses its types). With `checkJs` (or `// @ts-check`), vue-tsc
+  checks it as JavaScript, which vue-check can't reproduce, so it stops with exit code 3 and says so.
+  vue-tsc 3.3 writes JSDoc instead and isn't affected.
 - **One conformance case.** In `_failed_#4569`, which Vue's own suite marks as a known failure, a
   declaration-emit error (TS4025) on Vue's internal export is reported on a different line: `tsc`-style
   output carries where an error starts but not its length, and this error's span is the one the

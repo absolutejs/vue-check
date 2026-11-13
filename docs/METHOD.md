@@ -29,6 +29,13 @@ global types written where that version expects them, and every file extension V
 (`.vue`, plus for example `.md` in a VitePress project). The TypeScript it generates is the code
 `vue-tsc` checks, in the language `vue-tsc` gives it (a plain `<script>` is JavaScript).
 
+A JavaScript file stays JavaScript, with one exception. Some versions of Vue's codegen (3.2) write
+typed scaffolding (`declare`, type aliases, casts) into the JavaScript of a `<script setup>` without
+`lang="ts"`. A checker that behaves like `tsc` treats TypeScript syntax in JavaScript as a syntax error
+and checks nothing, where `vue-tsc` hides it. Without `checkJs`, `vue-tsc` reports nothing in such a file
+and only uses its types, so vue-check checks it as TypeScript with `// @ts-nocheck`: the same types, and
+the same silence. With `checkJs` it stops with exit code 3 rather than check it differently.
+
 It generates every Vue file the program reaches, not only the project's own: `vue-tsc` creates a virtual
 file for any Vue file its program resolves, such as a monorepo's workspace packages. Imports are read
 with TypeScript's `preProcessFile` (a scan, not a full parse), from the generated code and from source
@@ -61,7 +68,9 @@ for file:
   A generated file resolves its own imports from its folder: bare imports walk up `node_modules`
   folders, and the nearest `package.json` decides a file's module format. So every folder above a
   source that has a `node_modules` or a `package.json` gets a link to it at the same place in the
-  mirror, and a generated file resolves each import to exactly the file its source would.
+  mirror, and a generated file resolves each import to exactly the file its source would. Only those
+  two are linked: TypeScript follows a link to its real file for what it resolves through
+  `node_modules`, so those files enter the program once, but a linked source file would enter it twice.
 - **The same options.** The generated config extends the project's. Two options are carried over the
   way TypeScript 7 needs them: `baseUrl`, which TypeScript 7 has removed, becomes its documented
   replacement (a catch-all path alias); relative `types` entries stay resolved from the project's
@@ -112,6 +121,9 @@ Errors in `.ts` files pass through unchanged. The output format is `vue-tsc`'s:
 
   Any other syntax error that maps nowhere would stop the checker on codegen's text, so `vue-check`
   stops with exit code 3 and names the file.
+- **Only what the project installed.** Vue's codegen, Volar and TypeScript are loaded from the
+  project's `node_modules`, never from Bun's global install cache (which Bun's `require` falls back to
+  for a package the project doesn't have).
 - **A check that didn't run is never clean.** If the checker fails without printing a single error
   (a crash, an unreadable config), `vue-check` exits 3. Errors with no position (an invalid option, a
   missing file) are reported as `tsc` prints them.

@@ -23,7 +23,9 @@ const { core, extensions, maps, references, ts: projectTs, unparsed } = generate
  * node_modules folders, and the nearest package.json sets a file's module
  * format. So each folder above a generated file's source that has either gets
  * a link to it at the same place in the mirror, and a twin resolves every
- * import to exactly the files its source would. */
+ * import to exactly the files its source would. (Only those two: TypeScript
+ * follows a link to its real file only for what it resolves through
+ * node_modules, so a linked source file would enter the program twice.) */
 const linked = new Set<string>();
 for (const map of Object.values(maps)) {
 	for (let folder = dirname(join(root, map.source)); !linked.has(folder); folder = dirname(folder)) {
