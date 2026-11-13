@@ -121,7 +121,7 @@ export const vueExtensionsOf = (core: typeof ownCore, vueOptions: Parameters<typ
  * nothing. The rewrite is undone exactly: each `/*REST *\/ ` becomes
  * `//REST` + the line break it replaced + two spaces, the same length, so
  * every mapping offset still holds and comments mean what they meant.
- * Remove once fixed upstream (vuejs/language-tools).
+ * vuejs/language-tools#6360; see UPSTREAM_ISSUES.md for when to remove it.
  */
 const PROPS_COPY = /(= __VLS_asFunctionalComponent\d?\([^\n]*\(\{\n\/\/ @ts-ignore\n)([^\n]*)/g;
 export const repairPropsCopy = (text: string) =>
@@ -140,11 +140,12 @@ export const repairPropsCopy = (text: string) =>
 	});
 
 /*
- * Another codegen quirk vue-tsc hides: an event with a modifier and no
- * handler (`@click.stop=""`) becomes `onClick: (__VLS_ctx.)`, which doesn't
- * parse. `__VLS_ctx.` becomes `null!` padded to the same length: an
- * expression of type never, which reports nothing, as vue-tsc shows nothing
- * for an empty handler.
+ * Another codegen quirk vue-tsc hides: an event with no handler
+ * (`@click=""`, with or without modifiers) becomes `onClick: (__VLS_ctx.)`,
+ * which doesn't parse. `__VLS_ctx.` becomes `null!` padded to the same
+ * length: an expression of type never, which reports nothing, as vue-tsc
+ * shows nothing for an empty handler. vuejs/language-tools#6361; see
+ * UPSTREAM_ISSUES.md for when to remove it.
  */
 const EMPTY_HANDLER = /__VLS_ctx\.(?=\))/g;
 export const repairEmptyHandlers = (text: string) => text.replace(EMPTY_HANDLER, 'null!     ');

@@ -103,7 +103,12 @@ Errors in `.ts` files pass through unchanged. The output format is `vue-tsc`'s:
   error-tolerant path accepts are normalized to valid TypeScript **without changing the text's
   length**, so every source-map offset stays exact:
   - `//` inside a string in a component's props copy;
-  - an event modifier with an empty handler (`@click.stop=""`).
+  - an event with an empty handler (`@click=""`).
+
+  The first changes one result: `vue-tsc` 3.3.14 doesn't check the props after a URL in a component's
+  props (`<Child href="https://example.com" :count="'text'" />`), because its codegen turns the URL's
+  `//` into a comment, and vue-check does. Both are tracked, with their removal steps, in
+  `UPSTREAM_ISSUES.md` (vuejs/language-tools#6360 and #6361).
 
   Any other syntax error that maps nowhere would stop the checker on codegen's text, so `vue-check`
   stops with exit code 3 and names the file.

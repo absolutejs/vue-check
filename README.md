@@ -126,6 +126,9 @@ Environment: Intel(R) Core(TM) Ultra 7 155U, 12 GB RAM (container limit 10 GB), 
   output carries where an error starts but not its length, and this error's span is the one the
   mapping can't recover.
 
+Workarounds for upstream bugs, and when to remove them, are tracked in
+[UPSTREAM_ISSUES.md](UPSTREAM_ISSUES.md).
+
 ## License
 
 MIT
