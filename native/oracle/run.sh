@@ -25,4 +25,9 @@ docker run --rm --network none --memory 4g --user "$(id -u):$(id -g)" -e HOME=/t
 	-v "$bun_binary":/usr/local/bin/bun:ro -w "$inside" node:22-bookworm \
 	bun /tool/native/oracle/dump.ts "$inside" /out
 "$tool/native/target/release/vue-check-codegen" parse < "$out/files.jsonl" > "$out/native.jsonl"
-bun "$tool/native/oracle/compare.ts" "$out"
+status=0
+bun "$tool/native/oracle/compare.ts" "$out" || status=1
+# The template expressions the oracle recorded, replayed natively.
+"$tool/native/target/release/vue-check-codegen" interpolate < "$out/oracle.jsonl" > "$out/interpolations.jsonl"
+bun "$tool/native/oracle/compare-interpolations.ts" "$out" || status=1
+exit $status

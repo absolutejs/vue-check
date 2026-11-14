@@ -249,6 +249,101 @@ const scriptSetupRanges = (value: AnyNode | null | undefined) => {
 	};
 };
 
+/* The codegen itself, run as vue-tsc runs it, with generateInterpolation
+ * wrapped: each call's inputs and what it generated are recorded, so the
+ * native side can be given the same call. */
+const core = ported ? coreRequire(corePackage.replace(/package\.json$/, 'index.js')) : null;
+const codeFeatures: Record<string, AnyNode> = core?.codeFeatures ?? {};
+/** Which errors a piece of code reports: 0 none, 1 all, a fixed rule's name, or 'stateful'. */
+const verificationOf = (features: AnyNode | undefined) => {
+	const verification = features?.verification;
+	if (!verification) return 0;
+	if (typeof verification !== 'object' || !verification.shouldReport) return 1;
+	if (verification === codeFeatures.doNotReportTs2353AndTs2561?.verification) return 'ts2353';
+	if (verification === codeFeatures.doNotReportTs6133?.verification) return 'ts6133';
+
+	return 'stateful';
+};
+/** Pieces of code as data: text, or [text, source, offset, verification, combine group]. */
+const codesOf = (codes: unknown[]) => {
+	const tokens = new Map<symbol, number>();
+
+	return codes.map((code) => {
+		if (typeof code === 'string') return code;
+		const [text, source, offset, features] = code as [string, string | undefined, number, AnyNode];
+		const token = features?.__combineToken as symbol | undefined;
+		if (token !== undefined && !tokens.has(token)) tokens.set(token, tokens.size);
+
+		return [text, source ?? null, offset, verificationOf(features), token === undefined ? null : tokens.get(token)];
+	});
+};
+let interpolations: unknown[] = [];
+if (ported) {
+	const module = coreRequire(join(dirname(corePackage), 'lib/codegen/template/interpolation.js'));
+	const original = module.generateInterpolation;
+	module.generateInterpolation = function* (options: AnyNode, ctx: AnyNode, block: AnyNode, features: AnyNode, code: string, start: number, prefix = '', suffix = '', inNarrowing = false) {
+		const call = {
+			code,
+			dollarVars: [...ctx.dollarVars],
+			dotValueBindings: [...options.dotValueBindings],
+			inNarrowing,
+			lib: options.vueCompilerOptions.lib,
+			prefix,
+			reassertBindings: [...(options.reassertBindings ?? [])],
+			scopes: ctx.scopes.map((scope: Set<string>) => [...scope]),
+			scriptLang: options.scriptLang,
+			setupBindings: [...options.setupBindings],
+			setupConsts: [...options.setupConsts],
+			setupRefs: [...options.setupRefs],
+			source: block.name,
+			start,
+			suffix,
+			verification: verificationOf(features)
+		};
+		const accessMark = ctx.accessLog.length;
+		const codes: unknown[] = [];
+		for (const generated of original(options, ctx, block, features, code, start, prefix, suffix, inNarrowing)) {
+			/* Copied now: the template codegen replaces a piece's features once it has it. */
+			codes.push(typeof generated === 'string' ? generated : [...generated]);
+			yield generated;
+		}
+		interpolations.push({ ...call, accesses: ctx.accessLog.slice(accessMark), codes: codesOf(codes) });
+	};
+}
+const languagePlugin = (() => {
+	if (!core || !analysis) return null;
+	const { ts } = analysis;
+	const vueOptions = core.getDefaultCompilerOptions();
+	if (typeof core.createGlobalTypesWriter === 'function') vueOptions.globalTypesPath = core.createGlobalTypesWriter(vueOptions, () => {});
+
+	return core.createVueLanguagePlugin(ts, {}, vueOptions, (id: string) => id);
+})();
+const volar = ported ? createRequire(corePackage)('@volar/language-core') : null;
+/** The TypeScript vue-tsc checks for a file, and its mappings. */
+const generated = (path: string, source: string) => {
+	if (!languagePlugin || !analysis || !volar) return null;
+	const code = languagePlugin.createVirtualCode(path, 'vue', analysis.ts.ScriptSnapshot.fromString(source), { getAssociatedScript: () => undefined });
+	if (!code) return null;
+	for (const embedded of volar.forEachEmbeddedCode(code)) {
+		if (!embedded.id.startsWith('script_') || embedded.id === 'script_raw') continue;
+
+		return {
+			id: embedded.id,
+			languageId: embedded.languageId,
+			mappings: embedded.mappings.map((mapping: AnyNode) => ({
+				generated: mapping.generatedOffsets,
+				generatedLengths: mapping.generatedLengths ?? null,
+				lengths: mapping.lengths,
+				source: mapping.sourceOffsets,
+				verification: verificationOf(mapping.data)
+			})),
+			text: embedded.snapshot.getText(0, embedded.snapshot.getLength())
+		};
+	}
+
+	return null;
+};
+
 const SKIPPED = new Set(['node_modules', '.git', '.vue-check', 'dist']);
 const vueFiles = (folder: string): string[] =>
 	readdirSync(folder, { withFileTypes: true })
@@ -301,6 +396,12 @@ for (const [index, path] of paths.entries()) {
 			const template = descriptor.template;
 			record.template = template ? templateTree(template.lang ?? 'html', template.content) : null;
 			poisoned = leaked();
+			if (!poisoned) {
+				interpolations = [];
+				record.generated = generated(path, source);
+				record.interpolations = interpolations;
+				poisoned = leaked();
+			}
 		} else record.sfc = { ast };
 	} catch (error) {
 		record.threw = String(error);

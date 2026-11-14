@@ -24,7 +24,7 @@ use oxc_ast::ast::{
 };
 use oxc_ast::{AstKind, Comment};
 use oxc_ast_visit::{Visit, walk};
-use oxc_parser::Parser;
+use oxc_parser::{ParseOptions, Parser};
 use oxc_span::{GetSpan, SourceType, Span};
 use oxc_syntax::scope::ScopeFlags;
 
@@ -136,12 +136,15 @@ impl ScriptLang {
     }
 
     fn source_type(self) -> SourceType {
+        // Always as a module: oxc's "module or script, whichever parses" mode
+        // can return a tree with part of the text missing and no error.
         match self {
             Self::Js => SourceType::mjs(),
             Self::Jsx => SourceType::jsx(),
             Self::Ts => SourceType::ts(),
             Self::Tsx => SourceType::tsx(),
         }
+        .with_module(true)
     }
 }
 
@@ -261,7 +264,14 @@ fn with_program<T>(
     read: impl FnOnce(&Program<'_>) -> Result<T, Unsupported>,
 ) -> Result<T, Unsupported> {
     let allocator = Allocator::default();
-    let parsed = Parser::new(&allocator, text, lang.source_type()).parse();
+    // TypeScript's parser takes a `return` anywhere.
+    let options = ParseOptions {
+        allow_return_outside_function: true,
+        ..ParseOptions::default()
+    };
+    let parsed = Parser::new(&allocator, text, lang.source_type())
+        .with_options(options)
+        .parse();
     if parsed.panicked || !parsed.diagnostics.is_empty() {
         // For finding out why a file was declined.
         if std::env::var_os("VUE_CHECK_NATIVE_EXPLAIN").is_some() {
