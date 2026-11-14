@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 /*
@@ -17,12 +17,23 @@ import { join, relative } from 'node:path';
 const [expected, actual] = process.argv.slice(2);
 if (!expected || !actual) throw new Error('usage: bun bench/codegen-diff.ts <expected-out-dir> <actual-out-dir>');
 
-const filesOf = (root: string) =>
-	(readdirSync(root, { recursive: true }) as string[])
-		.map((file) => join(root, file))
-		.filter((file) => !file.endsWith('codegen.json') && !file.endsWith('tsconfig.json') && statSync(file).isFile())
-		.map((file) => relative(root, file))
-		.sort();
+/* Every file under a folder, and every link as what it points to: the links
+ * to node_modules and package.json (see src/codegen.ts) aren't followed. */
+const filesOf = (root: string) => {
+	const found: string[] = [];
+	const walk = (folder: string) => {
+		for (const entry of readdirSync(folder)) {
+			const path = join(folder, entry);
+			const status = lstatSync(path);
+			if (status.isDirectory()) walk(path);
+			else if (!path.endsWith('codegen.json') && !path.endsWith('tsconfig.json')) found.push(relative(root, path));
+		}
+	};
+	walk(root);
+
+	return found.sort();
+};
+const contentOf = (path: string) => (lstatSync(path).isSymbolicLink() ? `link to ${readlinkSync(path)}` : readFileSync(path, 'utf8'));
 
 const problems: string[] = [];
 const expectedFiles = filesOf(expected);
@@ -33,8 +44,8 @@ for (const file of expectedFiles) {
 		continue;
 	}
 	actualFiles.delete(file);
-	const want = readFileSync(join(expected, file), 'utf8');
-	const got = readFileSync(join(actual, file), 'utf8');
+	const want = contentOf(join(expected, file));
+	const got = contentOf(join(actual, file));
 	if (want === got) continue;
 	let at = 0;
 	while (at < want.length && want[at] === got[at]) at++;

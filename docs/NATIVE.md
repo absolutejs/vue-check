@@ -46,6 +46,28 @@ the binary, so codegen no longer loads TypeScript.
 
 Each stage ships only after it passes the bar on everything above.
 
+## How it is called
+
+`src/generate.ts` walks the project as before: the Vue files of the tsconfig, then every one reached
+by import. For a project the port reproduces (`src/native.ts` decides), each queue of files goes to
+the binary in one run, as lines of JSON on its standard input: the file's text, the Vue version the
+code is for (`target`), and the folder of language-core's type declarations relative to the file.
+Each line that comes back is the file's generated code and mappings, or the reason the port leaves
+the file alone. Everything after that is the same code for both: the two repairs, the language of
+the generated file, its syntax check, the links and `codegen.json`.
+
+A project is one the port reproduces when:
+
+- its `@vue/language-core`, `@vue/compiler-dom` and `entities` are the versions above;
+- its `vueCompilerOptions` are the defaults. `target` and `typesRoot` are free (they are passed to
+  the binary), and so is `vitePressExtensions`, which only adds files the binary isn't asked about;
+- no file changes how later files parse (see below). When one does, the whole project is generated
+  again by the JavaScript codegen.
+
+`VUE_CHECK_NATIVE=0` turns the native codegen off, `VUE_CHECK_NATIVE=<path>` names the binary, and
+`VUE_CHECK_NATIVE_EXPLAIN=1` prints which codegen made each file and why.
+`bench/codegen-bar.sh <project> <tsconfig> <out>` runs both and compares the two folders.
+
 ## What native declines
 
 The port stands behind a result or it doesn't return one. Two cases go back to the JavaScript codegen:

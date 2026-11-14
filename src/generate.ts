@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import * as ownVolar from '@volar/language-core';
 import * as ownCore from '@vue/language-core';
 import ownTs from 'typescript';
+import { nativeCodegen, type NativeResult } from './native';
 
 /* The project's own codegen, as its vue-tsc would use: the same
  * @vue/language-core (and its TypeScript) the project installed, so
@@ -60,6 +61,8 @@ const projectModules = (root: string) => {
 
 	return {
 		core: load<typeof ownCore>('@vue/language-core', ownCore, [fromVueTsc, projectRequire]),
+		/* Resolves what the codegen itself resolves (its compiler, say). */
+		coreRequire: coreRequire ?? createRequire(import.meta.resolve('@vue/language-core/package.json')),
 		ts: load<typeof ownTs>('typescript', ownTs, [projectRequire, fromVueTsc], (value) => typeof value?.sys?.readFile === 'function'),
 		volar: load<typeof ownVolar>('@volar/language-core', ownVolar, [coreRequire, fromVueTsc, projectRequire])
 	};
@@ -217,14 +220,31 @@ const hasTypeScriptSyntax = (ts: typeof ownTs, text: string, jsx: boolean) => {
  * codegen.ts: rootDirs ["/", outDir] joins every file to its twin). */
 export const mirrorOf = (outDir: string, file: string) => join(outDir, relative(parse(file).root, file));
 
+/** A file's generated code, from Volar or from the native codegen. */
+type EmbeddedCode = {
+	id: string;
+	languageId: string;
+	mappings: { data: ownVolar.CodeInformation; generatedLengths?: number[]; generatedOffsets: number[]; lengths: number[]; sourceOffsets: number[] }[];
+	text: string;
+};
+type GenerateResult = {
+	core: typeof ownCore;
+	extensions: string[];
+	maps: Record<string, SourceMap>;
+	packageImports: Map<string, string>;
+	references: { link: string; real: string }[];
+	ts: typeof ownTs;
+	unparsed: UnparsedFile[];
+};
+
 /**
  * Generates the TypeScript for the project's .vue files and writes it to
  * outDir. With `only` (absolute .vue paths), it writes nothing and returns
  * just those files' maps: codegen is deterministic, so regenerating a file
  * gives the same text and offsets the check saw.
  */
-export const generate = (options: { only?: string[]; outDir: string; root: string; tsconfig: string }) => {
-	const { core, ts, volar } = projectModules(options.root);
+export const generate = (options: { native?: false; only?: string[]; outDir: string; root: string; tsconfig: string }): GenerateResult => {
+	const { core, coreRequire, ts, volar } = projectModules(options.root);
 	const parsed = core.createParsedCommandLine(ts, ts.sys, options.tsconfig);
 	/* As vue-tsc sets up its plugin: versions that keep Vue's global types in
 	 * a file have vue-tsc write it (createGlobalTypesWriter); later ones don't. */
@@ -234,6 +254,33 @@ export const generate = (options: { only?: string[]; outDir: string; root: strin
 	if (typeof withWriter.createGlobalTypesWriter === 'function')
 		(parsed.vueOptions as { globalTypesPath?: unknown }).globalTypesPath = withWriter.createGlobalTypesWriter(parsed.vueOptions, ts.sys.writeFile);
 	const plugin = core.createVueLanguagePlugin(ts, parsed.options, parsed.vueOptions, (id: string) => id);
+	/* The native codegen, for the files of a project it reproduces (see
+	 * native.ts). Regenerating a few files (`only`) asks Volar itself. */
+	const nativeOrNot = options.only || options.native === false ? null : nativeCodegen(core, ts, coreRequire, parsed.vueOptions);
+	const native = nativeOrNot && 'generate' in nativeOrNot ? nativeOrNot : null;
+	/* What the native side made of each file. It is asked a whole queue at a
+	 * time: files found by import later are asked about when they are reached. */
+	const nativeResults = new Map<string, NativeResult>();
+	const sources = new Map<string, string>();
+	const read = (file: string) => {
+		const known = sources.get(file);
+		if (known !== undefined) {
+			sources.delete(file);
+
+			return known;
+		}
+
+		return readFileSync(file, 'utf8');
+	};
+	/* The fixed rules a native mapping names, as the objects the codegen puts
+	 * in its mappings (serialize.ts finds them by identity). */
+	const features = (core as unknown as { codeFeatures: Record<string, ownVolar.CodeInformation> }).codeFeatures;
+	const dataOf: Record<0 | 1 | 'ts2353' | 'ts6133', ownVolar.CodeInformation | undefined> = {
+		0: { verification: false },
+		1: { verification: true },
+		ts2353: features?.doNotReportTs2353AndTs2561,
+		ts6133: features?.doNotReportTs6133
+	};
 	const extensions = vueExtensionsOf(core, parsed.vueOptions);
 	const writing = !options.only;
 	if (writing) {
@@ -320,19 +367,65 @@ export const generate = (options: { only?: string[]; outDir: string; root: strin
 				scanned.add(file);
 				scan(file, readFileSync(file, 'utf8'));
 			}
+	/* The JavaScript codegen's answer for the whole project, when the native
+	 * one can't be used for it after all. */
+	const withoutNative = () => generate({ ...options, native: false });
 	for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
-		const text = readFileSync(file, 'utf8');
-		const languageId = plugin.getLanguageId?.(file) ?? 'vue';
-		const code = plugin.createVirtualCode?.(file, languageId, ts.ScriptSnapshot.fromString(text), {
-			getAssociatedScript: () => undefined
-		});
-		if (!code) continue;
-		for (const embedded of volar.forEachEmbeddedCode(code)) {
+		if (native && !nativeResults.has(file)) {
+			const batch = [file, ...queue].filter((queuedFile) => queuedFile.endsWith('.vue') && !nativeResults.has(queuedFile));
+			for (const queuedFile of batch) sources.set(queuedFile, readFileSync(queuedFile, 'utf8'));
+			const results = native.generate(batch.map((queuedFile) => ({ file: queuedFile, text: sources.get(queuedFile) ?? '' })));
+			for (const [index, queuedFile] of batch.entries()) {
+				const result = results[index];
+				if (!result) continue;
+				/* Only the original, run on every file in order, reproduces what
+				 * such a file does to the files after it. */
+				if ('unsupported' in result && result.poisonsLaterParses) return withoutNative();
+				nativeResults.set(queuedFile, result);
+			}
+		}
+		const text = read(file);
+		const nativeResult = nativeResults.get(file);
+		const fromNative = nativeResult !== undefined && 'generated' in nativeResult;
+		const embeddedCodes = ((): EmbeddedCode[] | null => {
+			if (nativeResult && 'generated' in nativeResult) {
+				const { generated } = nativeResult;
+
+				return [
+					{
+						id: generated.id,
+						languageId: generated.languageId,
+						mappings: generated.mappings.map((mapping) => ({
+							data: dataOf[mapping.verification] ?? { verification: true },
+							generatedOffsets: mapping.generated,
+							lengths: mapping.lengths,
+							sourceOffsets: mapping.source
+						})),
+						text: generated.text
+					}
+				];
+			}
+			const languageId = plugin.getLanguageId?.(file) ?? 'vue';
+			const code = plugin.createVirtualCode?.(file, languageId, ts.ScriptSnapshot.fromString(text), {
+				getAssociatedScript: () => undefined
+			});
+			if (!code) return null;
+
+			return [...volar.forEachEmbeddedCode(code)].map((embedded): EmbeddedCode => ({
+				id: embedded.id,
+				languageId: embedded.languageId,
+				mappings: embedded.mappings,
+				text: embedded.snapshot.getText(0, embedded.snapshot.getLength())
+			}));
+		})();
+		if (native && !fromNative && native.parserStateLeaked()) return withoutNative();
+		if (!embeddedCodes) continue;
+		for (const embedded of embeddedCodes) {
 			// script_raw is the untouched <script>; script_ts/tsx is what vue-tsc checks.
 			if (!embedded.id.startsWith('script_') || embedded.id === 'script_raw') continue;
 			/* The generated code's own language: a plain <script> is JavaScript, as
 			 * vue-tsc's virtual file is (so checkJs decides, not us). */
-			const original = embedded.snapshot.getText(0, embedded.snapshot.getLength());
+			const original = embedded.text;
 			const twin = twinLanguage(ts, EXTENSIONS[embedded.languageId] ?? '.ts', original, Boolean(parsed.options.checkJs) || /@ts-check\b/.test(text));
 			if (twin.unsupported)
 				unparsed.push({
@@ -403,5 +496,22 @@ export const generate = (options: { only?: string[]; outDir: string; root: strin
 			};
 		}
 	}
+	/* VUE_CHECK_NATIVE_EXPLAIN: which codegen made each file, and why. */
+	if (process.env.VUE_CHECK_NATIVE_EXPLAIN && !options.only) {
+		const declined = new Map<string, number>();
+		let generatedNatively = 0;
+		for (const result of nativeResults.values()) {
+			if ('generated' in result) generatedNatively += 1;
+			else declined.set(result.unsupported, (declined.get(result.unsupported) ?? 0) + 1);
+		}
+		const state = native
+			? 'on'
+			: nativeOrNot && 'unavailable' in nativeOrNot
+				? `off (${nativeOrNot.unavailable})`
+				: 'off (a file changes how later files parse)';
+		console.error(`native codegen ${state}: ${generatedNatively} of ${Object.keys(maps).length} files`);
+		for (const [reason, count] of declined) console.error(`  left to JavaScript, ${count}: ${reason}`);
+	}
+
 	return { core, extensions, maps, packageImports, references, ts, unparsed };
 };

@@ -472,6 +472,8 @@ struct GenerateInput {
     text: String,
     /// Absent when the project has no language-core to name.
     types_path: Option<String>,
+    /// The version of Vue the code is for (`vueCompilerOptions.target`).
+    target: Option<f64>,
 }
 
 /// The generated code of one file, in the shape the oracle records it.
@@ -479,8 +481,12 @@ fn generate_one(input: &GenerateInput) -> Value {
     use codegen::Verification;
 
     let name = input.file.rsplit('/').next().unwrap_or(&input.file);
-    match codegen::file::generate_file(&input.text, name, input.types_path.as_deref().unwrap_or(""))
-    {
+    match codegen::file::generate_file(
+        &input.text,
+        name,
+        input.types_path.as_deref().unwrap_or(""),
+        input.target.unwrap_or(99.0),
+    ) {
         Ok(generated) => {
             let mappings: Vec<Value> = generated
                 .mappings

@@ -363,7 +363,11 @@ if (ported) {
 		return result;
 	};
 }
-const vueOptions = core?.getDefaultCompilerOptions() ?? null;
+/* The Vue version the code is generated for: vue-tsc reads it from the
+ * project's installed vue; TARGET sets it here (99, the default, is "latest"). */
+const target = process.env.TARGET ? Number(process.env.TARGET) : undefined;
+/* The options of a project that sets none, as vue-tsc resolves them. */
+const vueOptions = core && analysis ? new core.CompilerOptionsResolver(analysis.ts).build(core.getDefaultCompilerOptions(target)) : null;
 const languagePlugin = (() => {
 	if (!core || !analysis) return null;
 	const { ts } = analysis;
@@ -437,7 +441,7 @@ for (const [index, path] of paths.entries()) {
 	if (index < from) continue;
 	const file = relative(root, path);
 	const source = readFileSync(path, 'utf8');
-	files.push(JSON.stringify({ file, text: source, typesPath: typesPathOf(path) }));
+	files.push(JSON.stringify({ file, target: vueOptions?.target ?? null, text: source, typesPath: typesPathOf(path) }));
 	const record: Record<string, unknown> = { file, versions };
 	let poisoned = false;
 	try {

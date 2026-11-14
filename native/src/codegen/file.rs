@@ -267,7 +267,7 @@ fn derive(
 /// Generates a file's code with the default compiler options.
 /// `file_name` is the file's base name, and `types_path` the folder of
 /// language-core's type declarations as the file's `/// <reference>` lines
-/// name it.
+/// name it; `target` is the version of Vue the code is for.
 #[expect(
     clippy::too_many_lines,
     reason = "one derivation in the original, in the same order"
@@ -276,6 +276,7 @@ pub fn generate_file(
     source: &str,
     file_name: &str,
     types_path: &str,
+    target: f64,
 ) -> Result<GeneratedFile, Declined> {
     let sfc = parse_sfc(source);
     if sfc.parsed.poisons_later_parses {
@@ -604,7 +605,7 @@ pub fn generate_file(
     let script_codes = generate_script(
         &ScriptOptions {
             lib: &compiler.lib,
-            target: 99.0,
+            target,
             check_unknown_props: compiler.check_unknown_props,
             infer_component_dollar_refs: compiler.infer_component_dollar_refs,
             infer_component_dollar_el: compiler.infer_component_dollar_el,
@@ -629,6 +630,12 @@ pub fn generate_file(
         codes,
         tokens,
     );
+    // A rule that counts the errors it sees (under `@vue-expect-error`) is a
+    // function, which only Volar can evaluate.
+    let is_stateful = |code: &Code| matches!(code, Code::Mapped { features, .. } if features.verification == Verification::Stateful);
+    if script_codes.iter().any(is_stateful) {
+        return Err(Declined::file("a rule that only Volar can evaluate"));
+    }
     Ok(GeneratedFile {
         id: format!("script_{lang}"),
         language_id: language_id(lang),

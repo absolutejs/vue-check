@@ -56,7 +56,8 @@ pub struct CompilerFlags {
 }
 
 impl Default for CompilerFlags {
-    /// `getDefaultCompilerOptions`.
+    /// The options of a project that sets none (`getDefaultCompilerOptions`,
+    /// through `CompilerOptionsResolver.build`).
     fn default() -> Self {
         Self {
             lib: "vue".to_owned(),
@@ -73,7 +74,8 @@ impl Default for CompilerFlags {
             infer_component_dollar_refs: false,
             fallthrough_attributes: false,
             check_required_fallthrough_attributes: false,
-            fallthrough_component_names: ["Transition", "KeepAlive", "Teleport", "Suspense"]
+            // As `CompilerOptionsResolver.build` leaves them: hyphenated.
+            fallthrough_component_names: ["transition", "keep-alive", "teleport", "suspense"]
                 .map(str::to_owned)
                 .to_vec(),
             data_attributes: Vec::new(),
