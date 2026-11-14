@@ -159,7 +159,11 @@ impl Blocks<'_> {
 }
 
 /// `getMappingsForCode`.
-fn build_mappings(codes: &[Code], blocks: &Blocks) -> Vec<Mapping> {
+fn build_mappings(
+    codes: &[Code],
+    blocks: &Blocks,
+    decoded: &[crate::template::ast::DecodedValue],
+) -> Vec<Mapping> {
     let map = Utf16Map::new(blocks.source);
     let mut mappings: Vec<Mapping> = Vec::new();
     // The mapping each combine token started.
@@ -175,7 +179,12 @@ fn build_mappings(codes: &[Code], blocks: &Blocks) -> Vec<Mapping> {
                 features,
             } => {
                 let units = text.encode_utf16().count();
-                let source_offset = map.offset(blocks.content_start(*source) + offset);
+                let base = blocks.content_start(*source);
+                let source_offset = if *source == Source::Template {
+                    map.offset_in(base, *offset, decoded)
+                } else {
+                    map.offset(base + offset)
+                };
                 let existing = features
                     .combine
                     .and_then(|token| combined.iter().find(|(known, _)| *known == token))
@@ -685,6 +694,12 @@ pub fn generate_file(
         id: format!("script_{lang}"),
         language_id: language_id(lang),
         text: to_string(&script_codes),
-        mappings: build_mappings(&script_codes, &blocks),
+        mappings: build_mappings(
+            &script_codes,
+            &blocks,
+            parsed_template
+                .as_ref()
+                .map_or(&[], |(_, _, root)| root.decoded.as_slice()),
+        ),
     })
 }

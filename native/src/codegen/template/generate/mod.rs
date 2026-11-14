@@ -225,6 +225,7 @@ pub fn generate_template(options: &TemplateOptions, root: Option<&Root>) -> Gene
         loc: Loc::default(),
         errors: Vec::new(),
         components: Vec::new(),
+        decoded: Vec::new(),
     };
     let mut generator = Generator {
         options,

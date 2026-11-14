@@ -60,7 +60,8 @@ impl<'a> Generator<'a> {
     ) -> FailedPropExpression<'a> {
         FailedPropExpression {
             source: self.source(&expression.loc),
-            offset: expression.loc.start.offset,
+            // The text as it is written, located in the source.
+            offset: crate::utf16::in_source(expression.loc.start.offset),
             prefix,
             suffix,
         }

@@ -19,6 +19,7 @@
 //! The tokenizer is adapted by Vue from htmlparser2, Copyright 2010, 2011,
 //! Chris Winberry, MIT License. Vue is Copyright (c) Yuxi (Evan) You, MIT.
 
+use super::ast::DecodedValue;
 use super::ast::{
     Attribute, CompilerError, ConstantType, Directive, Element, ElementType, ErrorCode,
     ForParseResult, Interpolation, Loc, Namespace, Node, NodeId, Position, Prop, Root,
@@ -315,6 +316,7 @@ struct Parser<'a> {
     /// The open elements, innermost last (the original keeps it first).
     stack: Vec<NodeId>,
     unsupported: Option<&'static str>,
+    decoded: Vec<DecodedValue>,
     /// Why the original throws during this parse, when it does.
     throws: Option<&'static str>,
 }
@@ -350,6 +352,7 @@ pub fn parse(input: &str, options: ParseOptions) -> Parsed {
         current_v_pre_boundary: None,
         stack: Vec::new(),
         unsupported: None,
+        decoded: Vec::new(),
         throws: None,
     };
     parser.run();
@@ -363,6 +366,7 @@ pub fn parse(input: &str, options: ParseOptions) -> Parsed {
             loc,
             errors: parser.errors,
             components: Vec::new(),
+            decoded: parser.decoded,
         },
         unsupported: parser.unsupported.or(parser.throws),
         poisons_later_parses: parser.in_v_pre || parser.throws.is_some(),
@@ -1679,9 +1683,11 @@ impl<'a> Parser<'a> {
                         if !value.is_ascii()
                             && self.input.get(value_start..value_end) != Some(&value)
                         {
-                            self.give_up(
-                                "an expression with an entity and characters outside ASCII",
-                            );
+                            self.decoded.push(DecodedValue {
+                                start: value_start,
+                                end: value_end,
+                                text: value.clone(),
+                            });
                         }
                         let exp =
                             create_simple_expression(value, false, loc, ConstantType::NotConstant);
@@ -2058,6 +2064,10 @@ impl<'a> Parser<'a> {
         let name_loc = self.get_loc(directive.loc.start.offset, name_end);
         let value = directive.exp.map(|exp| {
             let mut loc = exp.loc;
+            // An attribute's value isn't an expression: nothing is located
+            // by its decoded text.
+            self.decoded
+                .retain(|value| value.start != exp.loc.source.start);
             // With its quotes, when it has them. The text isn't retaken.
             if loc.end.offset < directive.loc.end.offset {
                 loc.start.offset = loc.start.offset.saturating_sub(1);

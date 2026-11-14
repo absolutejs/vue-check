@@ -269,6 +269,20 @@ impl ErrorCode {
     }
 }
 
+/// A directive's value in which an entity was decoded and which has a
+/// character outside ASCII. The original locates the parts of an expression
+/// by adding offsets in its text to where it starts in the source. With an
+/// entity decoded the two no longer line up, and what it adds is counted in
+/// UTF-16 units of the decoded text (see `Utf16Map::offset_in`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DecodedValue {
+    /// Where the value starts and ends in the parsed text.
+    pub start: usize,
+    pub end: usize,
+    /// Its text, decoded.
+    pub text: String,
+}
+
 /// A parsed template.
 #[derive(Debug)]
 pub struct Root {
@@ -279,6 +293,8 @@ pub struct Root {
     /// The components the template uses, in the order the transforms meet
     /// them (`root.components`). Empty until `transform.rs` has run.
     pub components: Vec<String>,
+    /// The directive values whose offsets are counted in their decoded text.
+    pub decoded: Vec<DecodedValue>,
 }
 
 impl Root {

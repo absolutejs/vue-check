@@ -51,6 +51,55 @@ impl Utf16Map {
     }
 }
 
+/// Marks an offset that was counted in the source's own text inside a
+/// directive's value (see `Utf16Map::offset_in`): the original reads a value
+/// both ways, decoded as an expression and as it is written when the
+/// expression is checked again after its element.
+pub const fn in_source(offset: usize) -> usize {
+    offset | IN_SOURCE
+}
+
+/// Above any offset in a file.
+const IN_SOURCE: usize = 1 << 48;
+
+impl Utf16Map {
+    /// The UTF-16 offset of `offset` in a template that starts at `base` in
+    /// this text. Inside a directive's value that was decoded, the original
+    /// counts from the value's start in units of the decoded text.
+    pub fn offset_in(
+        &self,
+        base: usize,
+        offset: usize,
+        decoded: &[crate::template::ast::DecodedValue],
+    ) -> usize {
+        if offset & IN_SOURCE != 0 {
+            return self.offset(base + (offset & !IN_SOURCE));
+        }
+        let Some(value) = decoded
+            .iter()
+            .find(|value| (value.start..value.end).contains(&offset))
+        else {
+            return self.offset(base + offset);
+        };
+        let within = offset - value.start;
+        let units = match value.text.get(..within) {
+            Some(before) => before.encode_utf16().count(),
+            // Past the text's end: as far past it.
+            None if within > value.text.len() => {
+                value.text.encode_utf16().count() + (within - value.text.len())
+            }
+            // Inside a character: the characters that start before it.
+            None => value
+                .text
+                .char_indices()
+                .take_while(|(index, _)| *index < within)
+                .map(|(_, char)| char.len_utf16())
+                .sum(),
+        };
+        self.offset(base + value.start) + units
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Utf16Map;

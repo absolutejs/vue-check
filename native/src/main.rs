@@ -396,7 +396,11 @@ fn replay_template(call: &TemplateCall) -> Value {
     };
     let generated = generate_template(&options, root.as_ref());
     json!({
-        "codes": dump_template_codes(&generated.codes, &call.template),
+        "codes": dump_template_codes(
+            &generated.codes,
+            &call.template,
+            root.as_ref().map_or(&[], |root| root.decoded.as_slice()),
+        ),
         "generatedTypes": generated.generated_types,
         "contextAccesses": generated.context_access_names,
         "dotValueAccesses": generated.dot_value_accesses,
@@ -405,7 +409,11 @@ fn replay_template(call: &TemplateCall) -> Value {
 }
 
 /// The template's codes in the shape the oracle records them.
-fn dump_template_codes(codes: &[codegen::Code], template: &str) -> Vec<Value> {
+fn dump_template_codes(
+    codes: &[codegen::Code],
+    template: &str,
+    decoded: &[template::ast::DecodedValue],
+) -> Vec<Value> {
     use codegen::{Code, Source};
 
     let map = utf16::Utf16Map::new(template);
@@ -437,7 +445,13 @@ fn dump_template_codes(codes: &[codegen::Code], template: &str) -> Vec<Value> {
                     Source::Style(index) => format!("style_{index}"),
                     Source::Main => "main".to_owned(),
                 };
-                json!([text, source, map.offset(*offset), verification, group])
+                json!([
+                    text,
+                    source,
+                    map.offset_in(0, *offset, decoded),
+                    verification,
+                    group
+                ])
             }
         })
         .collect()
