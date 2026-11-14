@@ -20,6 +20,7 @@ mod utf16;
 
 use std::io::{self, BufRead, Write};
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -526,16 +527,47 @@ fn generate_one(input: &GenerateInput) -> Value {
     }
 }
 
+/// Files are generated independently of each other, so they are shared out
+/// over the machine's cores; the lines come back in the order they came in.
 fn run_generate() -> io::Result<()> {
-    let stdin = io::stdin().lock();
-    let mut stdout = io::BufWriter::new(io::stdout().lock());
-    for line in stdin.lines() {
-        let line = line?;
-        if line.is_empty() {
-            continue;
+    let lines: Vec<String> = io::stdin()
+        .lock()
+        .lines()
+        .filter(|line| line.as_ref().map_or(true, |line| !line.is_empty()))
+        .collect::<io::Result<_>>()?;
+    let workers = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZero::get)
+        .min(lines.len())
+        .max(1);
+    let next = AtomicUsize::new(0);
+    let generate_some = || -> io::Result<Vec<(usize, String)>> {
+        let mut done = Vec::new();
+        loop {
+            let index = next.fetch_add(1, Ordering::Relaxed);
+            let Some(line) = lines.get(index) else {
+                return Ok(done);
+            };
+            let input: GenerateInput = serde_json::from_str(line)?;
+            done.push((index, serde_json::to_string(&generate_one(&input))?));
         }
-        let input: GenerateInput = serde_json::from_str(&line)?;
-        serde_json::to_writer(&mut stdout, &generate_one(&input))?;
+    };
+    let mut outputs: Vec<(usize, String)> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..workers)
+            .map(|_| scope.spawn(generate_some))
+            .collect();
+        let mut outputs = Vec::with_capacity(lines.len());
+        for handle in handles {
+            let done = handle
+                .join()
+                .map_err(|_| io::Error::other("a worker thread panicked"))??;
+            outputs.extend(done);
+        }
+        Ok::<_, io::Error>(outputs)
+    })?;
+    outputs.sort_unstable_by_key(|(index, _)| *index);
+    let mut stdout = io::BufWriter::new(io::stdout().lock());
+    for (_, output) in &outputs {
+        stdout.write_all(output.as_bytes())?;
         stdout.write_all(b"\n")?;
     }
     stdout.flush()
