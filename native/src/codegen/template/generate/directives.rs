@@ -50,6 +50,27 @@ impl Generator<'_> {
                 self.text(")");
                 self.out.push(boundary.end());
                 self.text(END_OF_LINE);
+            } else if !self.options.compiler.core.is_3_3_14() {
+                // Before 3.3.14: one call, with two more arguments whatever
+                // the hook declares.
+                let boundary = self.boundary(start, end, VERIFICATION);
+                self.text("__VLS_asFunctionalDirective(");
+                self.directive_identifier(directive);
+                let directive_type = self.as_type(&format!(
+                    "import('{}').ObjectDirective",
+                    self.options.compiler.lib
+                ));
+                self.text(format!(
+                    ", {directive_type})(__VLS_nonNull(null), {{ ...__VLS_directiveBindingRestFields, "
+                ));
+                self.directive_arg(directive, true);
+                self.modifiers(directive, "modifiers", true);
+                self.directive_value(directive, true);
+                self.text(format!(
+                    "}},{NEW_LINE}__VLS_nonNull(null), __VLS_nonNull(null))"
+                ));
+                self.out.push(boundary.end());
+                self.text(END_OF_LINE);
             } else {
                 let hook_var = self.ctx.internal_variable();
                 self.text(format!("const {hook_var} = __VLS_asFunctionalDirective("));
@@ -101,7 +122,12 @@ impl Generator<'_> {
                 &js::camelize(&raw_name),
                 Some(start),
                 false,
-                Some(&raw_name),
+                // 3.3.14 keeps the name as written, for the import it may add.
+                self.options
+                    .compiler
+                    .core
+                    .is_3_3_14()
+                    .then_some(raw_name.as_str()),
             );
         }
         self.out.push(boundary.end());

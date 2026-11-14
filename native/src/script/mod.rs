@@ -78,6 +78,7 @@ impl Bindings {
 /// The options language-core's analysis depends on (`vueCompilerOptions`).
 #[derive(Clone, Debug)]
 pub struct ScriptOptions {
+    pub core: crate::codegen::CoreVersion,
     /// The extensions of a component file (`.vue`).
     pub extensions: Vec<String>,
     pub define_props: Vec<String>,
@@ -98,6 +99,7 @@ impl Default for ScriptOptions {
     fn default() -> Self {
         let one = |name: &str| vec![name.to_owned()];
         Self {
+            core: crate::codegen::CoreVersion::default(),
             extensions: one(".vue"),
             define_props: one("defineProps"),
             define_slots: one("defineSlots"),
@@ -615,7 +617,8 @@ fn import_bindings(
 }
 
 /// `tsCheckRE`: `/^\/\/(?:\s*@ts-(?:no)?check(?:$|\s)|\/\s*<reference\s)/`.
-fn is_ts_check_comment(comment: &str) -> bool {
+/// Before 3.3.14 it has no `/// <reference`.
+fn is_ts_check_comment(comment: &str, core: crate::codegen::CoreVersion) -> bool {
     let Some(rest) = comment.strip_prefix("//") else {
         return false;
     };
@@ -626,6 +629,9 @@ fn is_ts_check_comment(comment: &str) -> bool {
         .or_else(|| directive.strip_prefix("@ts-check"))
     {
         return after.is_empty() || starts_with_space(after);
+    }
+    if !core.is_3_3_14() {
+        return false;
     }
     rest.strip_prefix('/')
         .map(js::trim_start)
@@ -648,7 +654,12 @@ pub fn parse_script_setup_ranges(
         ranges.leading_comment_end_offset = trivia::leading_comment_ranges(text, 0)
             .iter()
             .rev()
-            .find(|comment| is_ts_check_comment(text.get(comment.start..comment.end).unwrap_or("")))
+            .find(|comment| {
+                is_ts_check_comment(
+                    text.get(comment.start..comment.end).unwrap_or(""),
+                    options.core,
+                )
+            })
             .map_or(0, |comment| comment.end);
 
         // Where the imports end: at the first statement that isn't an import,

@@ -142,6 +142,7 @@ pub struct ComponentEntry {
 
 #[derive(Debug, Default)]
 pub struct TemplateContext {
+    pub core: crate::codegen::CoreVersion,
     // Directive comments.
     pub comment_stack: Vec<CommentInfo>,
     pub comment_buffer: Vec<NodeId>,
@@ -368,15 +369,25 @@ impl TemplateContext {
                 if !is_reserved_word(name) {
                     for (offset, source_name) in &accessed.offsets {
                         // `codeFeatures.importCompletionOnly`
-                        let token = self.token();
-                        generate_camelized(
-                            out,
-                            token,
-                            source_name,
-                            accessed.source,
-                            *offset,
-                            Features::new(Verification::Off),
-                        );
+                        if self.core.is_3_3_14() {
+                            let token = self.token();
+                            generate_camelized(
+                                out,
+                                token,
+                                source_name,
+                                accessed.source,
+                                *offset,
+                                Features::new(Verification::Off),
+                            );
+                        } else {
+                            // Before 3.3.14: the name, as one piece.
+                            out.push(Code::Mapped {
+                                text: name.clone(),
+                                source: accessed.source,
+                                offset: *offset,
+                                features: Features::new(Verification::Off),
+                            });
+                        }
                         out.push(",".into());
                     }
                 }

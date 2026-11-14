@@ -23,6 +23,35 @@ pub enum Source {
     Main,
 }
 
+/// The version of `@vue/language-core` whose codegen is reproduced. The port
+/// is of the latest; where an earlier one writes something else, it is
+/// written as that one does.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CoreVersion {
+    V3_3_12,
+    V3_3_13,
+    #[default]
+    V3_3_14,
+}
+
+impl CoreVersion {
+    /// The version by its number, if the port reproduces it.
+    pub fn parse(version: &str) -> Option<Self> {
+        match version {
+            "3.3.12" => Some(Self::V3_3_12),
+            "3.3.13" => Some(Self::V3_3_13),
+            "3.3.14" => Some(Self::V3_3_14),
+            _ => None,
+        }
+    }
+
+    /// 3.3.14: the template in its own function, typed event arguments,
+    /// assertions repeated in function bodies.
+    pub fn is_3_3_14(self) -> bool {
+        self >= Self::V3_3_14
+    }
+}
+
 /// Which errors `vue-tsc` reports on a piece of generated code: the
 /// `verification` of the original's `VueCodeInformation`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,6 +64,8 @@ pub enum Verification {
     NotTs2353OrTs2561,
     /// `codeFeatures.doNotReportTs6133`.
     NotTs6133,
+    /// `codeFeatures.doNotReportTs2339AndTs2551`, which 3.3.14 no longer has.
+    NotTs2339OrTs2551,
     /// A rule that depends on what was reported before it (under
     /// `@vue-expect-error`), which only Volar can evaluate.
     Stateful,

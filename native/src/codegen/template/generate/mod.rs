@@ -25,6 +25,7 @@ use crate::codegen::{
     generate_camelized, generate_string_literal_key, is_identifier, to_string,
 };
 use crate::js;
+use crate::codegen::CoreVersion;
 use crate::template::ast::{Element, ElementType, Loc, Node, NodeId, Prop, Root};
 
 /// The compiler options the template codegen reads (`vueCompilerOptions`).
@@ -34,6 +35,7 @@ use crate::template::ast::{Element, ElementType, Loc, Node, NodeId, Prop, Root};
     reason = "the original's own options, one to one"
 )]
 pub struct CompilerFlags {
+    pub core: CoreVersion,
     pub lib: String,
     pub check_unknown_props: bool,
     pub check_unknown_events: bool,
@@ -60,6 +62,7 @@ impl Default for CompilerFlags {
     /// through `CompilerOptionsResolver.build`).
     fn default() -> Self {
         Self {
+            core: CoreVersion::default(),
             lib: "vue".to_owned(),
             check_unknown_props: false,
             check_unknown_events: false,
@@ -196,6 +199,7 @@ pub fn generate_template(options: &TemplateOptions, root: Option<&Root>) -> Gene
         out: Vec::new(),
         resolved: 0,
     };
+    generator.ctx.core = options.compiler.core;
     generator.worker(root.is_some());
     generator.resolve_features();
     GeneratedTemplate {
@@ -280,6 +284,7 @@ impl<'a> Generator<'a> {
             reassert_bindings: self.options.reassert_bindings,
             lib: &self.options.compiler.lib,
             is_ts: self.options.is_ts,
+            core: self.options.compiler.core,
         }
     }
 
@@ -494,14 +499,21 @@ impl<'a> Generator<'a> {
             self.root_node();
         }
         self.ctx
-            .generate_hoist_variables(options.is_ts, &mut self.out);
+            // Before 3.3.14 the assertion is written in JavaScript too.
+            .generate_hoist_variables(
+                options.is_ts || !options.compiler.core.is_3_3_14(),
+                &mut self.out,
+            );
         self.slots_type();
         self.inherited_attrs_type();
         self.template_refs_type();
         self.root_el_type();
 
         if !self.ctx.dollar_vars.is_empty() {
-            self.ctx.add_generated_type("__VLS_dollars");
+            // 3.3.14 hands it out of the template's function.
+            if options.compiler.core.is_3_3_14() {
+                self.ctx.add_generated_type("__VLS_dollars");
+            }
             self.typed_var("var", "__VLS_dollars", |generator| {
                 let lib = &compiler.lib;
                 generator.text(format!("{{{NEW_LINE}"));

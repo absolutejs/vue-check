@@ -2,7 +2,7 @@
 import { appendFileSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative } from 'node:path';
-import { portedOptions } from '../../src/native';
+import { LANGUAGE_CORES, portedOptions } from '../../src/native';
 
 /*
  * The oracle for the native template parser: what the project's own
@@ -44,7 +44,7 @@ const versions = {
 };
 /* The block splitting is language-core's own, and only compared for the
  * version the native codegen ports. */
-const ported = versions.languageCore === '3.3.14';
+const ported = LANGUAGE_CORES.includes(versions.languageCore);
 const fileVue = ported
 	? coreRequire(join(dirname(corePackage), 'lib/plugins/file-vue.js')).default({ vueCompilerOptions: { extensions: ['.vue'] } })
 	: null;
@@ -261,6 +261,7 @@ const verificationOf = (features: AnyNode | undefined) => {
 	if (!verification) return 0;
 	if (typeof verification !== 'object' || !verification.shouldReport) return 1;
 	if (verification === codeFeatures.doNotReportTs2353AndTs2561?.verification) return 'ts2353';
+	if (verification === codeFeatures.doNotReportTs2339AndTs2551?.verification) return 'ts2339';
 	if (verification === codeFeatures.doNotReportTs6133?.verification) return 'ts6133';
 
 	return 'stateful';
@@ -456,7 +457,7 @@ for (const [index, path] of paths.entries()) {
 	if (index < from) continue;
 	const file = relative(root, path);
 	const source = readFileSync(path, 'utf8');
-	files.push(JSON.stringify({ file, options: given && 'options' in given ? given.options : {}, target: vueOptions?.target ?? null, text: source, typesPath: typesPathOf(path) }));
+	files.push(JSON.stringify({ core: versions.languageCore, file, options: given && 'options' in given ? given.options : {}, target: vueOptions?.target ?? null, text: source, typesPath: typesPathOf(path) }));
 	const record: Record<string, unknown> = { file, versions };
 	let poisoned = false;
 	try {
@@ -500,4 +501,5 @@ for (const [index, path] of paths.entries()) {
 	}
 }
 flush();
+writeFileSync(join(out, 'core.txt'), versions.languageCore);
 console.log(`${paths.length} files, @vue/language-core ${versions.languageCore}, @vue/compiler-dom ${versions.compilerDom}, entities ${versions.entities}`);

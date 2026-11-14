@@ -188,13 +188,26 @@ impl<'a> Generator<'a> {
                     } else {
                         ", void"
                     });
-                    generator.text(format!(", {}", compiler.check_unknown_components));
+                    // 3.3.14 passes whether an unknown component is an error
+                    // to the type; before it, the key's rule says so.
+                    let is_3_3_14 = compiler.core.is_3_3_14();
+                    if is_3_3_14 {
+                        generator.text(format!(", {}", compiler.check_unknown_components));
+                    }
                     for name in &original_names {
                         generator.text(format!(", '{name}'"));
                     }
                     generator.text(">[");
                     // `semanticWithoutHighlight` and `verification`
-                    generator.string_literal_key(tag, start_tag_offset, VERIFICATION);
+                    generator.string_literal_key(
+                        tag,
+                        start_tag_offset,
+                        if is_3_3_14 || compiler.check_unknown_components {
+                            VERIFICATION
+                        } else {
+                            Features::new(Verification::NotTs2339OrTs2551)
+                        },
+                    );
                     generator.text("]");
                 });
 
@@ -212,7 +225,10 @@ impl<'a> Generator<'a> {
                             vec![tag.to_owned(), capitalized]
                         };
                         for name in names {
-                            let prefix = if options.setup_bindings.contains(&js::camelize(&name)) {
+                            // Before 3.3.14, always from the components.
+                            let prefix = if compiler.core.is_3_3_14()
+                                && options.setup_bindings.contains(&js::camelize(&name))
+                            {
                                 ""
                             } else {
                                 "__VLS_components."
@@ -390,6 +406,13 @@ impl<'a> Generator<'a> {
             _ => None,
         });
         let has_slots = slot_dir.is_some() || !node.children.is_empty();
+        let is_3_3_14 = self.options.compiler.core.is_3_3_14();
+        if has_slots && !is_3_3_14 {
+            // Before 3.3.14 the slots come first, and count as a use of the
+            // context variable.
+            let ctx_var = self.use_ctx_var(component_index);
+            self.v_slot(node, slot_dir, &ctx_var);
+        }
 
         // Declared before the slots' code that reads them.
         let is_ctx_var_used = self
@@ -397,7 +420,7 @@ impl<'a> Generator<'a> {
             .components
             .get(component_index)
             .is_some_and(|component| component.is_ctx_var_used);
-        if is_ctx_var_used || has_slots {
+        if is_ctx_var_used || (has_slots && is_3_3_14) {
             self.typed_var("var", &ctx_var, |generator| {
                 generator.text(format!(
                     "__VLS_ExtractComponentContext<typeof {component_var}, typeof {vnode_var}>"
@@ -411,7 +434,7 @@ impl<'a> Generator<'a> {
                 ));
             });
         }
-        if has_slots {
+        if has_slots && is_3_3_14 {
             self.v_slot(node, slot_dir, &ctx_var);
         }
         self.ctx.components.pop();

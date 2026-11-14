@@ -32,6 +32,7 @@ pub enum ResolveClassNames {
 
 #[derive(Debug)]
 pub struct StyleOptions<'a> {
+    pub core: crate::codegen::CoreVersion,
     pub styles: &'a [Style],
     pub is_ts: bool,
     pub lib: &'a str,
@@ -69,6 +70,7 @@ pub fn generate_style(options: &StyleOptions, first_token: u32) -> GeneratedStyl
         ctx: TemplateContext::starting_at(first_token),
         out: Vec::new(),
     };
+    generator.ctx.core = options.core;
     generator.ctx.open_scope();
     generator.scoped_classes();
     generator.modules();
@@ -301,6 +303,7 @@ impl Generator<'_> {
             reassert_bindings: &no_reasserts,
             lib: options.lib,
             is_ts: options.is_ts,
+            core: options.core,
         };
         for (index, style) in options.styles.iter().enumerate() {
             for binding in &style.bindings {

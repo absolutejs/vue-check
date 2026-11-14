@@ -5,6 +5,7 @@
 //! The original passes generators to one another, to be run where they are
 //! yielded. Here each is a method, called at that place.
 
+use crate::codegen::CoreVersion;
 use std::collections::HashSet;
 
 use super::local_types_data as local_types;
@@ -37,6 +38,7 @@ pub enum Generic {
 )]
 #[derive(Debug)]
 pub struct ScriptOptions<'a> {
+    pub core: CoreVersion,
     pub lib: &'a str,
     /// `vueCompilerOptions.target`: the Vue version.
     pub target: f64,
@@ -308,6 +310,11 @@ impl<'a> Generator<'a> {
         ) {
             // <script> and <script setup>
             self.script_setup_imports(setup_ranges);
+            // Where the macros are declared moved twice: at the end of the
+            // file in 3.3.12, here in 3.3.13, after `<script>` since.
+            if options.core == CoreVersion::V3_3_13 {
+                self.macros();
+            }
             let mut self_type = None;
             if ranges.export_default.is_some() {
                 self_type = Some("__VLS_self");
@@ -316,7 +323,9 @@ impl<'a> Generator<'a> {
                 self.section(Source::Script, 0, script.len(), ALL);
                 self.text(format!("export default {export_expression}{END_OF_LINE}"));
             }
-            self.macros();
+            if options.core.is_3_3_14() {
+                self.macros();
+            }
             self.export_declare_equal(Source::ScriptSetup, "__VLS_export");
             if let Some(generic) = options.script_setup_generic {
                 self.generic(setup_ranges, generic, self_type);
@@ -330,7 +339,9 @@ impl<'a> Generator<'a> {
         {
             // Only <script setup>: its code is at the root of the file.
             self.script_setup_imports(setup_ranges);
-            self.macros();
+            if options.core >= CoreVersion::V3_3_13 {
+                self.macros();
+            }
             if let Some(generic) = options.script_setup_generic {
                 self.export_declare_equal(Source::ScriptSetup, "__VLS_export");
                 self.generic(setup_ranges, generic, None);
@@ -359,6 +370,13 @@ impl<'a> Generator<'a> {
             }
         }
         self.local_types();
+        if options.core == CoreVersion::V3_3_12
+            && options.script_setup.is_some()
+            && options.script_setup_ranges.is_some()
+            && options.script_src.is_none()
+        {
+            self.macros();
+        }
     }
 
     /// `<script src="...">`: the component is the module's default export.
@@ -538,7 +556,7 @@ impl<'a> Generator<'a> {
             prop_types.push("__VLS_EmitProps".to_owned());
         }
         if self.has_type("__VLS_InheritedAttrs") {
-            prop_types.push(if has_emit_props {
+            prop_types.push(if has_emit_props && options.core.is_3_3_14() {
                 "Omit<__VLS_InheritedAttrs, keyof __VLS_EmitProps>".to_owned()
             } else {
                 "__VLS_InheritedAttrs".to_owned()
@@ -1059,7 +1077,24 @@ impl<'a> Generator<'a> {
         if to_import.is_empty() {
             return;
         }
-        self.text(format!("{NEW_LINE}const {{ "));
+        if options.core == CoreVersion::V3_3_12 {
+            // 3.3.12 imports them.
+            self.text("import { ");
+            for (canonical, alias) in to_import {
+                self.text(if alias == canonical {
+                    format!("{canonical}, ")
+                } else {
+                    format!("{canonical} as {alias}, ")
+                });
+            }
+            self.text(format!("}} from '{}'{END_OF_LINE}", options.lib));
+            return;
+        }
+        self.text(if options.core.is_3_3_14() {
+            format!("{NEW_LINE}const {{ ")
+        } else {
+            "const { ".to_owned()
+        });
         for (canonical, alias) in to_import {
             self.text(if alias == canonical {
                 format!("{canonical}, ")
@@ -1392,6 +1427,17 @@ impl<'a> Generator<'a> {
 
         // The types setup and the export need from the template come out of
         // its function's return type.
+        if !options.core.is_3_3_14() {
+            // Before 3.3.14 the template's code is here as it is.
+            let brand = ref_brand_argument(options.lib, options.is_ts);
+            for name in options.dot_value_bindings {
+                self.text(format!("// @ts-ignore{NEW_LINE}"));
+                self.text(format!("__VLS_withDotValue({name}, {brand}){END_OF_LINE}"));
+            }
+            let codes = std::mem::take(&mut self.template_and_style_codes);
+            self.out.extend(codes);
+            return;
+        }
         let has_define_slots = options
             .script_setup_ranges
             .is_some_and(|ranges| ranges.define_slots.is_some());

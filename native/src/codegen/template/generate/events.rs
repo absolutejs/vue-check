@@ -223,7 +223,11 @@ impl<'a> Generator<'a> {
 
     /// `generateEventParameter`.
     fn event_parameter(&mut self, args_type: &str) {
-        if self.options.is_ts {
+        if !self.options.compiler.core.is_3_3_14() {
+            // Before 3.3.14 `$event` has no type of its own.
+            self.text(format!("// @ts-ignore{NEW_LINE}"));
+            self.text(format!("(...[$event]) => {{{NEW_LINE}"));
+        } else if self.options.is_ts {
             self.text(format!("(...[$event]: {args_type}) => {{{NEW_LINE}"));
         } else {
             self.text(format!(
@@ -287,11 +291,15 @@ impl<'a> Generator<'a> {
         self.event_parameter(args_type);
         self.reasserts(access_mark);
         self.ctx.generate_condition_guards(&mut self.out);
-        let boundary = self.boundary(start, exp.loc.end.offset, VERIFICATION);
-        self.text("(");
-        self.out.extend(codes);
-        self.text(")");
-        self.out.push(boundary.end());
+        if self.options.compiler.core.is_3_3_14() {
+            let boundary = self.boundary(start, exp.loc.end.offset, VERIFICATION);
+            self.text("(");
+            self.out.extend(codes);
+            self.text(")");
+            self.out.push(boundary.end());
+        } else {
+            self.out.extend(codes);
+        }
         self.text(format!(" = $event{END_OF_LINE}"));
         self.text("}");
     }

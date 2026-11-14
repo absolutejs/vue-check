@@ -56,7 +56,10 @@ fn parse_file(input: &Input) -> Value {
         });
     // Each <script> block's analysis. A block in a language that isn't
     // JavaScript or TypeScript has none.
-    let options = script::ScriptOptions::default();
+    let options = script::ScriptOptions {
+        core: core_argument(),
+        ..script::ScriptOptions::default()
+    };
     let mut analyze = |block: Option<&sfc::Block>, setup: bool| {
         let block = block?;
         let lang = script::ScriptLang::from_lang(block.lang.as_deref().unwrap_or("js"))?;
@@ -135,7 +138,7 @@ struct RecordedFile {
 /// Pieces of code in the shape the oracle records them: text, or
 /// `[text, source, offset, verification, combine group]`.
 fn dump_codes(codes: &[codegen::Code], call: &InterpolationCall) -> Vec<Value> {
-    use codegen::{Code, Verification};
+    use codegen::Code;
 
     let map = utf16::Utf16Map::new(&call.code);
     let mut tokens: Vec<u32> = Vec::new();
@@ -158,13 +161,7 @@ fn dump_codes(codes: &[codegen::Code], call: &InterpolationCall) -> Vec<Value> {
                             tokens.len() - 1
                         })
                 });
-                let verification = match features.verification {
-                    Verification::Off => json!(0),
-                    Verification::On => json!(1),
-                    Verification::NotTs2353OrTs2561 => json!("ts2353"),
-                    Verification::NotTs6133 => json!("ts6133"),
-                    Verification::Stateful => json!("stateful"),
-                };
+                let verification = verification_name(features.verification);
                 json!([
                     text,
                     call.source,
@@ -205,14 +202,17 @@ fn replay_interpolation(call: &InterpolationCall) -> Value {
         reassert_bindings: &reassert_bindings,
         lib: &call.lib,
         is_ts: matches!(call.script_lang.as_str(), "ts" | "tsx"),
+        core: core_argument(),
     };
     let mut context = TemplateContext::default();
+    context.core = core_argument();
     context.scopes = call.scopes.iter().map(|scope| set(scope)).collect();
     context.dollar_vars = set(&call.dollar_vars);
     let verification = match &call.verification {
         Value::Number(number) if number.as_u64() == Some(1) => Verification::On,
         Value::String(rule) if rule == "ts2353" => Verification::NotTs2353OrTs2561,
         Value::String(rule) if rule == "ts6133" => Verification::NotTs6133,
+        Value::String(rule) if rule == "ts2339" => Verification::NotTs2339OrTs2551,
         Value::String(_) => Verification::Stateful,
         _ => Verification::Off,
     };
@@ -320,6 +320,7 @@ fn replay_template(call: &TemplateCall) -> Value {
     };
     let recorded = &call.compiler;
     let compiler = CompilerFlags {
+        core: core_argument(),
         lib: recorded.lib.clone(),
         check_unknown_props: recorded.check_unknown_props,
         check_unknown_events: recorded.check_unknown_events,
@@ -399,7 +400,7 @@ fn replay_template(call: &TemplateCall) -> Value {
 
 /// The template's codes in the shape the oracle records them.
 fn dump_template_codes(codes: &[codegen::Code], template: &str) -> Vec<Value> {
-    use codegen::{Code, Source, Verification};
+    use codegen::{Code, Source};
 
     let map = utf16::Utf16Map::new(template);
     let mut tokens: Vec<u32> = Vec::new();
@@ -422,13 +423,7 @@ fn dump_template_codes(codes: &[codegen::Code], template: &str) -> Vec<Value> {
                             tokens.len() - 1
                         })
                 });
-                let verification = match features.verification {
-                    Verification::Off => json!(0),
-                    Verification::On => json!(1),
-                    Verification::NotTs2353OrTs2561 => json!("ts2353"),
-                    Verification::NotTs6133 => json!("ts6133"),
-                    Verification::Stateful => json!("stateful"),
-                };
+                let verification = verification_name(features.verification);
                 let source = match source {
                     Source::Template => "template".to_owned(),
                     Source::Script => "script".to_owned(),
@@ -479,6 +474,9 @@ struct GenerateInput {
     /// The compiler options the project sets, of those the port reads.
     #[serde(default)]
     options: GenerateOptions,
+    /// The version of `@vue/language-core` the project runs; the latest
+    /// when not given.
+    core: Option<String>,
 }
 
 /// `vueCompilerOptions`, as resolved for the project: each option the port
@@ -544,10 +542,12 @@ enum Scoped {
 }
 
 impl GenerateOptions {
-    fn file_options(&self) -> codegen::file::FileOptions {
+    fn file_options(&self, core: codegen::CoreVersion) -> codegen::file::FileOptions {
         use codegen::style::ResolveClassNames;
 
         let mut options = codegen::file::FileOptions::default();
+        options.compiler.core = core;
+        options.analysis.core = core;
         let set = |flag: &mut bool, value: Option<bool>| {
             if let Some(value) = value {
                 *flag = value;
@@ -619,28 +619,33 @@ impl GenerateOptions {
 
 /// The generated code of one file, in the shape the oracle records it.
 fn generate_one(input: &GenerateInput) -> Value {
-    use codegen::Verification;
-
     let name = input.file.rsplit('/').next().unwrap_or(&input.file);
+    let core = match input.core.as_deref() {
+        None => codegen::CoreVersion::default(),
+        Some(version) => match codegen::CoreVersion::parse(version) {
+            Some(core) => core,
+            None => {
+                return json!({
+                    "file": input.file,
+                    "unsupported": "a version of @vue/language-core the port doesn't reproduce",
+                    "poisonsLaterParses": false,
+                });
+            }
+        },
+    };
     match codegen::file::generate_file(
         &input.text,
         name,
         input.types_path.as_deref().unwrap_or(""),
         input.target.unwrap_or(99.0),
-        &input.options.file_options(),
+        &input.options.file_options(core),
     ) {
         Ok(generated) => {
             let mappings: Vec<Value> = generated
                 .mappings
                 .iter()
                 .map(|mapping| {
-                    let verification = match mapping.verification {
-                        Verification::Off => json!(0),
-                        Verification::On => json!(1),
-                        Verification::NotTs2353OrTs2561 => json!("ts2353"),
-                        Verification::NotTs6133 => json!("ts6133"),
-                        Verification::Stateful => json!("stateful"),
-                    };
+                    let verification = verification_name(mapping.verification);
                     json!({
                         "generated": mapping.generated_offsets,
                         "generatedLengths": null,
@@ -772,6 +777,33 @@ fn run_interpolate() -> io::Result<()> {
         stdout.write_all(b"\n")?;
     }
     stdout.flush()
+}
+
+/// A piece of code's rule, as the oracle names it: 0 (nothing is reported),
+/// 1 (everything is), or the rule.
+fn verification_name(verification: codegen::Verification) -> Value {
+    use codegen::Verification;
+
+    match verification {
+        Verification::Off => json!(0),
+        Verification::On => json!(1),
+        Verification::NotTs2353OrTs2561 => json!("ts2353"),
+        Verification::NotTs6133 => json!("ts6133"),
+        Verification::NotTs2339OrTs2551 => json!("ts2339"),
+        Verification::Stateful => json!("stateful"),
+    }
+}
+
+/// `--core=3.3.13`: the version of language-core the oracle recorded, for
+/// the commands that replay what it recorded. The latest when not given.
+fn core_argument() -> codegen::CoreVersion {
+    std::env::args()
+        .find_map(|argument| {
+            argument
+                .strip_prefix("--core=")
+                .and_then(codegen::CoreVersion::parse)
+        })
+        .unwrap_or_default()
 }
 
 fn main() -> ExitCode {

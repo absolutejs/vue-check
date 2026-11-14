@@ -20,7 +20,7 @@ use oxc_syntax::scope::ScopeFlags;
 use super::binding_references::{ReferenceKind, references};
 use super::context::TemplateContext;
 use crate::codegen::{
-    Boundary, Code, END_OF_LINE, Features, NEW_LINE, Source, Verification, is_identifier,
+    Boundary, Code, CoreVersion, END_OF_LINE, Features, NEW_LINE, Source, Verification, is_identifier,
     ref_brand_argument,
 };
 
@@ -39,6 +39,7 @@ pub struct IdentifierOptions<'o> {
     pub lib: &'o str,
     /// Whether the component's script is TypeScript.
     pub is_ts: bool,
+    pub core: CoreVersion,
 }
 
 fn at(offset: u32) -> usize {
@@ -409,7 +410,8 @@ pub fn generate_interpolation(
     // The function bodies, when some binding has to be asserted again inside
     // each: assertion narrowing doesn't flow into a function.
     let mut bodies = Vec::new();
-    if !options.reassert_bindings.is_empty() && !is_plain_identifier {
+    // 3.3.14's: before it, nothing is asserted again inside a function.
+    if options.core.is_3_3_14() && !options.reassert_bindings.is_empty() && !is_plain_identifier {
         let collected = with_program(&text, |program| {
             let mut collector = BodyCollector {
                 text: &text,

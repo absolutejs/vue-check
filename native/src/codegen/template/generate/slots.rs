@@ -234,8 +234,19 @@ impl<'a> Generator<'a> {
         let slots = options.slots_assign_name.unwrap_or("__VLS_slots");
 
         if options.has_define_slots {
-            let slot_var = self.ctx.internal_variable();
-            self.text(format!("const {slot_var} = __VLS_asFunctionalSlot("));
+            // 3.3.14 names the slot's function, for the type of its props.
+            let slot_var = self
+                .options
+                .compiler
+                .core
+                .is_3_3_14()
+                .then(|| self.ctx.internal_variable());
+            match &slot_var {
+                Some(slot_var) => {
+                    self.text(format!("const {slot_var} = __VLS_asFunctionalSlot("));
+                }
+                None => self.text("__VLS_asFunctionalSlot("),
+            }
             if let Some(name_prop) = name_prop {
                 // The original makes the name's code before the boundary
                 // for an attribute's, and inside it for a bound one's.
@@ -272,17 +283,19 @@ impl<'a> Generator<'a> {
                 self.text("]");
                 self.out.push(boundary.end());
             }
-            self.text(format!("){END_OF_LINE}"));
-            self.text(format!("{slot_var}("));
+            match &slot_var {
+                Some(slot_var) => {
+                    self.text(format!("){END_OF_LINE}"));
+                    self.text(format!("{slot_var}("));
+                }
+                None => self.text(")("),
+            }
+            let attrs_type = slot_var
+                .as_ref()
+                .map(|slot_var| format!("Parameters<typeof {slot_var}>[0]"));
             let boundary = self.boundary(start_tag_offset, start_tag_end_offset, VERIFICATION);
             self.text(format!("{{{NEW_LINE}"));
-            self.element_props(
-                node,
-                &other_props,
-                true,
-                None,
-                Some(&format!("Parameters<typeof {slot_var}>[0]")),
-            );
+            self.element_props(node, &other_props, true, None, attrs_type.as_deref());
             self.text("}");
             self.out.push(boundary.end());
             self.text(format!("){END_OF_LINE}"));

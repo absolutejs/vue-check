@@ -524,6 +524,7 @@ pub fn generate_file(
         }
         Some(generate_style(
             &StyleOptions {
+                core: compiler.core,
                 styles: &styles,
                 is_ts,
                 lib: &compiler.lib,
@@ -642,6 +643,7 @@ pub fn generate_file(
     });
     let script_codes = generate_script(
         &ScriptOptions {
+            core: compiler.core,
             lib: &compiler.lib,
             target,
             check_unknown_props: compiler.check_unknown_props,

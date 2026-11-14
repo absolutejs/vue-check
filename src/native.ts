@@ -12,7 +12,8 @@ import { dirname, isAbsolute, join, relative } from 'node:path';
  * the same either way.
  */
 
-const LANGUAGE_CORE = '3.3.14';
+/** The versions of @vue/language-core the port reproduces. */
+export const LANGUAGE_CORES = ['3.3.12', '3.3.13', '3.3.14'];
 /** The @vue/compiler-dom patches whose parser the port reproduces (3.5.x). */
 const COMPILER_DOM_PATCHES = [36, 45] as const;
 const ENTITIES = /^7\.0\./;
@@ -30,7 +31,7 @@ export type NativeMapping = {
 	/** 0: no error is reported there; 1: all are; one of Vue's fixed rules; or
 	 * 'stateful', a rule that counts the errors it sees (under
 	 * `@vue-expect-error`), which is a function only Volar can evaluate. */
-	verification: 0 | 1 | 'stateful' | 'ts2353' | 'ts6133';
+	verification: 0 | 1 | 'stateful' | 'ts2339' | 'ts2353' | 'ts6133';
 };
 export type NativeResult =
 	| {
@@ -172,7 +173,7 @@ export const importReader = (typescriptFile: string): ((files: string[]) => (str
 const portedPackages = (coreRequire: NodeJS.Require) => {
 	try {
 		const languageCore = versionOf(coreRequire.resolve('@vue/language-core/package.json'));
-		if (languageCore !== LANGUAGE_CORE) return `@vue/language-core ${languageCore}`;
+		if (!LANGUAGE_CORES.includes(languageCore)) return `@vue/language-core ${languageCore}`;
 		const compilerDom = coreRequire.resolve('@vue/compiler-dom/package.json');
 		const compilerDomVersion = versionOf(compilerDom);
 		const [major, minor, patch, ...rest] = compilerDomVersion.split(/[.-]/);
@@ -184,7 +185,7 @@ const portedPackages = (coreRequire: NodeJS.Require) => {
 		const entities = versionOf(join(decode.slice(0, decode.lastIndexOf('/entities/') + 10), 'package.json'));
 		if (!ENTITIES.test(entities)) return `entities ${entities}`;
 
-		return { compilerDom: coreRequire('@vue/compiler-dom') as { parse: (template: string) => { children: { type: number }[] } } };
+		return { compilerDom: coreRequire('@vue/compiler-dom') as { parse: (template: string) => { children: { type: number }[] } }, languageCore };
 	} catch (error) {
 		return `its packages could not be read (${error instanceof Error ? error.message : String(error)})`;
 	}
@@ -292,7 +293,7 @@ export const nativeCodegen = (core: unknown, ts: unknown, coreRequire: NodeJS.Re
 				}
 				const input = files
 					.slice(start, end)
-					.map(({ file, text }) => `${JSON.stringify({ file, options: ported.options, target: options.target, text, typesPath: typesPathOf(file) })}\n`)
+					.map(({ file, text }) => `${JSON.stringify({ core: packages.languageCore, file, options: ported.options, target: options.target, text, typesPath: typesPathOf(file) })}\n`)
 					.join('');
 				const run = spawnSync(binary, ['generate'], { encoding: 'utf8', input, maxBuffer: Number.MAX_SAFE_INTEGER });
 				const lines = run.status === 0 ? run.stdout.split('\n').filter(Boolean) : [];
