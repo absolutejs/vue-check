@@ -348,7 +348,7 @@ pub fn generate_file(
         strict_css_modules,
         options_wrapper,
     } = options;
-    let sfc = parse_sfc(source);
+    let sfc = parse_sfc(source, options.compiler.cdata_outside_element_throws);
     if sfc.parsed.poisons_later_parses {
         return Err(Declined {
             reason: sfc
@@ -473,7 +473,10 @@ pub fn generate_file(
                 return Err(Declined::file("a template in a language other than HTML"));
             }
             let text = compile::with_suffix(&block.content);
-            let mut parsed = parse(&text, ParseOptions::template());
+            let mut parsed = parse(
+                &text,
+                ParseOptions::template(compiler.cdata_outside_element_throws),
+            );
             if parsed.poisons_later_parses {
                 return Err(Declined {
                     reason: parsed

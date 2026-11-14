@@ -36,6 +36,9 @@ use crate::template::ast::{Element, ElementType, Loc, Node, NodeId, Prop, Root};
 )]
 pub struct CompilerFlags {
     pub core: CoreVersion,
+    /// The project's `@vue/compiler-dom` is before 3.5.36 (see
+    /// `ParseOptions::cdata_outside_element_throws`).
+    pub cdata_outside_element_throws: bool,
     pub lib: String,
     pub check_unknown_props: bool,
     pub check_unknown_events: bool,
@@ -77,6 +80,7 @@ impl Default for CompilerFlags {
     fn default() -> Self {
         Self {
             core: CoreVersion::default(),
+            cdata_outside_element_throws: false,
             lib: "vue".to_owned(),
             check_unknown_props: false,
             check_unknown_events: false,

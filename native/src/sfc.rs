@@ -216,8 +216,8 @@ fn create_block(
 }
 
 /// `parseSfc.ts`'s `parse`, then the fix `file-vue` applies to its result.
-pub fn parse_sfc(source: &str) -> ParsedSfc {
-    let parsed = parse(source, ParseOptions::sfc());
+pub fn parse_sfc(source: &str, cdata_outside_element_throws: bool) -> ParsedSfc {
+    let parsed = parse(source, ParseOptions::sfc(cdata_outside_element_throws));
     let mut unsupported = parsed.unsupported;
     let mut descriptor = Descriptor::default();
     for id in &parsed.root.children {

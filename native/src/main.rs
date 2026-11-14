@@ -34,12 +34,23 @@ struct Input {
     text: String,
 }
 
+/// Whether a file the port declined may still make the project's parser
+/// throw, which changes how it parses every later file. The port may have
+/// declined before it parsed the template, and before 3.5.36 a CDATA section
+/// at a template's root throws there without throwing in the file's own
+/// parse; so any CDATA section counts. Saying so for a file that doesn't
+/// throw only sends the rest of the project to the JavaScript codegen.
+fn may_throw_unparsed(text: &str, cdata_outside_element_throws: bool) -> bool {
+    cdata_outside_element_throws && text.contains("<![CDATA[")
+}
+
 /// What the parser makes of one file. `unsupported` is set when the port
 /// can't stand behind the result, which the caller must not use then.
 fn parse_file(input: &Input) -> Value {
-    let sfc = sfc::parse_sfc(&input.text);
+    let sfc = sfc::parse_sfc(&input.text, dom_argument());
     let mut unsupported = sfc.unsupported;
-    let mut poisons_later_parses = sfc.parsed.poisons_later_parses;
+    let mut poisons_later_parses = sfc.parsed.poisons_later_parses
+        || (unsupported.is_some() && may_throw_unparsed(&input.text, dom_argument()));
     // The template, as `vue-template-html` compiles an HTML one.
     let template = sfc
         .descriptor
@@ -48,7 +59,7 @@ fn parse_file(input: &Input) -> Value {
         .filter(|block| matches!(block.lang.as_deref(), None | Some("html" | "md")))
         .map(|block| {
             let source = template::compile::with_suffix(&block.content);
-            let mut parsed = parse(&source, ParseOptions::template());
+            let mut parsed = parse(&source, ParseOptions::template(dom_argument()));
             unsupported = unsupported.or(parsed.unsupported);
             poisons_later_parses |= parsed.poisons_later_parses;
             unsupported = unsupported.or(template::transform::transform(&mut parsed.root));
@@ -323,6 +334,7 @@ fn replay_template(call: &TemplateCall) -> Value {
     let recorded = &call.compiler;
     let compiler = CompilerFlags {
         core: core_argument(),
+        cdata_outside_element_throws: dom_argument(),
         lib: recorded.lib.clone(),
         check_unknown_props: recorded.check_unknown_props,
         check_unknown_events: recorded.check_unknown_events,
@@ -361,7 +373,7 @@ fn replay_template(call: &TemplateCall) -> Value {
     let mut unsupported = None;
     let root = if call.has_ast {
         if matches!(call.lang.as_str(), "html" | "md") {
-            let mut parsed = parse(&parsed_text, ParseOptions::template());
+            let mut parsed = parse(&parsed_text, ParseOptions::template(dom_argument()));
             unsupported = parsed.unsupported;
             if parsed.poisons_later_parses {
                 unsupported = unsupported.or(Some("the template changes how later files parse"));
@@ -497,6 +509,8 @@ struct GenerateInput {
     /// The version of `@vue/language-core` the project runs; the latest
     /// when not given.
     core: Option<String>,
+    /// The version of `@vue/compiler-dom` it parses templates with.
+    compiler_dom: Option<String>,
 }
 
 /// `vueCompilerOptions`, as resolved for the project: each option the port
@@ -702,7 +716,14 @@ fn generate_one(input: &GenerateInput) -> Value {
         name,
         input.types_path.as_deref().unwrap_or(""),
         input.target.unwrap_or(99.0),
-        &input.options.file_options(core),
+        &{
+            let mut options = input.options.file_options(core);
+            options.compiler.cdata_outside_element_throws = input
+                .compiler_dom
+                .as_deref()
+                .is_some_and(is_before_3_5_36);
+            options
+        },
     ) {
         Ok(generated) => {
             let mappings: Vec<Value> = generated
@@ -735,7 +756,11 @@ fn generate_one(input: &GenerateInput) -> Value {
         Err(declined) => json!({
             "file": input.file,
             "unsupported": declined.reason,
-            "poisonsLaterParses": declined.poisons_later_parses,
+            "poisonsLaterParses": declined.poisons_later_parses
+                || may_throw_unparsed(
+                    &input.text,
+                    input.compiler_dom.as_deref().is_some_and(is_before_3_5_36),
+                ),
         }),
     }
 }
@@ -868,6 +893,26 @@ fn core_argument() -> codegen::CoreVersion {
                 .and_then(codegen::CoreVersion::parse)
         })
         .unwrap_or_default()
+}
+
+/// Whether a `@vue/compiler-dom` version is before 3.5.36, where a CDATA
+/// section outside any element makes the parser throw.
+fn is_before_3_5_36(version: &str) -> bool {
+    let mut parts = version.split('.').map(str::parse::<u32>);
+    matches!(
+        (parts.next(), parts.next(), parts.next()),
+        (Some(Ok(3)), Some(Ok(5)), Some(Ok(patch))) if patch < 36
+    )
+}
+
+/// `--dom=3.5.35`: the version of compiler-dom the oracle recorded, for the
+/// commands that replay what it recorded.
+fn dom_argument() -> bool {
+    std::env::args().any(|argument| {
+        argument
+            .strip_prefix("--dom=")
+            .is_some_and(is_before_3_5_36)
+    })
 }
 
 fn main() -> ExitCode {

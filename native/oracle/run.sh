@@ -26,15 +26,15 @@ docker run --rm --network none --memory 4g --user "$(id -u):$(id -g)" -e HOME=/t
 	-v "$mount":/project:ro "${modules[@]}" -v "$tool":/tool:ro -v "$out":/out \
 	-v "$bun_binary":/usr/local/bin/bun:ro -w "$inside" node:22-bookworm \
 	bun /tool/native/oracle/dump.ts "$inside" /out
-core=--core=$(cat "$out/core.txt")
-"$tool/native/target/release/vue-check-codegen" parse "$core" < "$out/files.jsonl" > "$out/native.jsonl"
+core=--core=$(cat "$out/core.txt"); dom=--dom=$(cat "$out/dom.txt")
+"$tool/native/target/release/vue-check-codegen" parse "$core" "$dom" < "$out/files.jsonl" > "$out/native.jsonl"
 status=0
 bun "$tool/native/oracle/compare.ts" "$out" || status=1
 # The template expressions the oracle recorded, replayed natively.
-"$tool/native/target/release/vue-check-codegen" interpolate "$core" < "$out/oracle.jsonl" > "$out/interpolations.jsonl"
+"$tool/native/target/release/vue-check-codegen" interpolate "$core" "$dom" < "$out/oracle.jsonl" > "$out/interpolations.jsonl"
 bun "$tool/native/oracle/compare-interpolations.ts" "$out" || status=1
 # The templates the oracle recorded, generated natively.
-"$tool/native/target/release/vue-check-codegen" template "$core" < "$out/oracle.jsonl" > "$out/templates.jsonl"
+"$tool/native/target/release/vue-check-codegen" template "$core" "$dom" < "$out/oracle.jsonl" > "$out/templates.jsonl"
 bun "$tool/native/oracle/compare-templates.ts" "$out" || status=1
 # Each file's generated code and mappings.
 "$tool/native/target/release/vue-check-codegen" generate < "$out/files.jsonl" > "$out/generated.jsonl"

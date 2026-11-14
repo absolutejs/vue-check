@@ -1,4 +1,5 @@
-# The benchmark corpus: name|repository|commit|project dir|workspace root (- for none)|tsconfig|vue-tsc args
+# The benchmark corpus: name|repository|commit|project dir|workspace root (- for none)|tsconfig|vue-tsc args|vue-tsc heap in MB (optional)
+# The heap is for the projects vue-tsc can't check within Node's default limit (about 2 GB).
 # Commits are full hashes: a shallow fetch of one commit needs the whole hash.
 # bench/setup-corpus.sh clones and installs it; bench/sweep.sh runs the differential over it.
 soybean-admin|soybeanjs/soybean-admin|d2dfefd757e37d8d6077ea1cea6181fb628d6097|soybean-admin|-|tsconfig.json|--skipLibCheck
@@ -12,3 +13,11 @@ vue-vben-admin|vbenjs/vue-vben-admin|53b47f8ce99ecea11aa04c9c876a2f18c479838f|vu
 gitea|go-gitea/gitea|53aafd7ee1014375b05af627805631ebfc0cbf6a|gitea|-|tsconfig.json|--skipLibCheck
 vue-pure-admin|pure-admin/vue-pure-admin|fae75ad1cd52d11a7279931ef5bba2b80e363c7b|vue-pure-admin|-|tsconfig.json|--skipLibCheck
 element-plus|element-plus/element-plus|2cc25233f949fa3d8fab6a51a20059fc97ba48d5|element-plus|-|tsconfig.web.json|--skipLibCheck --composite false
+dozzle|amir20/dozzle|739f534f1b799b3d9e0dcf658609e9f3be916e1c|dozzle|-|tsconfig.json|--skipLibCheck
+vueuse|vueuse/vueuse|bed1dce149ce6760fec13d4798c047f51a563180|vueuse|-|tsconfig.json|--skipLibCheck
+vikunja|go-vikunja/vikunja|293264397571be437c9bc9a32b4c492bd566dbc2|vikunja/frontend|-|tsconfig.app.json|--skipLibCheck --composite false
+reka-ui|unovue/reka-ui|1e60e0525487fe275910b64084ccea0c139bd53d|reka-ui/packages/core|reka-ui|tsconfig.check.json|--skipLibCheck
+vue-devtools|vuejs/devtools|c26960af88b586fd19bef0653528d21a0d46f14b|vue-devtools/packages/client|vue-devtools|tsconfig.json|--skipLibCheck
+1panel|1Panel-dev/1Panel|071653f5b7f63546328aa2b42bb1a41a2d4c97a7|1panel/frontend|-|tsconfig.json|--skipLibCheck|4096
+misskey|misskey-dev/misskey|f98f05b250981ddd754d9f02f47bcff124520ab3|misskey/packages/frontend|misskey|tsconfig.json|--skipLibCheck|4096
+directus|directus/directus|ed30e578b2c29b5b64159ef54e0a4739628144fd|directus/app|directus|tsconfig.json|--skipLibCheck|4096

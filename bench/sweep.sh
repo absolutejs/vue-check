@@ -8,9 +8,9 @@ dir=$(realpath "$1"); shift; tool=$(realpath "$(dirname "$0")/..")
 runs=1; for arg in "$@"; do case "$arg" in --runs=*) runs=${arg#--runs=} ;; esac; done
 cd "$tool"
 summary() { jq -c '{identical, bunCheckMatchesTsc7, oraclesFinished, vueTsc: .summary["vue-tsc"].errors, handling: (.vueHandling|map_values(length)), e2e: (.endToEnd|map_values(length)), s: [.summary["vue-tsc"].medianWallS, .summary["vue-check"].medianWallS, .summary["vue-tsc"].medianPeakRssMB, .summary["vue-check"].medianPeakRssMB]}' "bench/results/$1.json"; }
-grep -v '^#' bench/corpus.txt | while IFS='|' read -r name _repository _commit project workspace tsconfig args; do
-	root=${project%%/*}
-	if [ "$workspace" = "-" ]; then env=(); else env=(WORKSPACE="$dir/$workspace"); fi
+grep -v '^#' bench/corpus.txt | while IFS='|' read -r name _repository _commit project workspace tsconfig args heap; do
+	env=(VUE_TSC_HEAP_MB="${heap:-}")
+	if [ "$workspace" != "-" ]; then env+=(WORKSPACE="$dir/$workspace"); fi
 	# A run that failed leaves the previous result file: never report that as this run's.
 	if env "${env[@]}" timeout 1500 bench/run-in-docker.sh "$dir/$project" "$name" --runs="$runs" --tsconfig="$tsconfig" --vue-tsc-args="$args" >/dev/null 2>&1; then
 		echo "$name $(summary "$name")"

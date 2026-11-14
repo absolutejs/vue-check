@@ -49,24 +49,30 @@ pub struct ParseOptions {
     pub every_tag_is_native: bool,
     /// `isPreTag: () => true`: whitespace is kept everywhere.
     pub every_tag_is_pre: bool,
+    /// `@vue/compiler-dom` before 3.5.36: a CDATA section outside any element
+    /// makes the parser throw (it reads the namespace of an element that
+    /// isn't there).
+    pub cdata_outside_element_throws: bool,
 }
 
 impl ParseOptions {
     /// As `parseSfc.ts` splits a single-file component into blocks.
-    pub fn sfc() -> Self {
+    pub fn sfc(cdata_outside_element_throws: bool) -> Self {
         Self {
             mode: ParseMode::Sfc,
             every_tag_is_native: true,
             every_tag_is_pre: true,
+            cdata_outside_element_throws,
         }
     }
 
     /// As `template/compile.ts` parses a template block.
-    pub fn template() -> Self {
+    pub fn template(cdata_outside_element_throws: bool) -> Self {
         Self {
             mode: ParseMode::Html,
             every_tag_is_native: false,
             every_tag_is_pre: false,
+            cdata_outside_element_throws,
         }
     }
 }
@@ -1837,6 +1843,11 @@ impl<'a> Parser<'a> {
     }
 
     fn oncdata(&mut self, start: usize, end: usize) {
+        if self.options.cdata_outside_element_throws && self.stack.is_empty() {
+            self.throws
+                .get_or_insert("a CDATA section outside any element");
+            return;
+        }
         if self.parent_ns() == Namespace::Html {
             // From the `<![CDATA[`.
             self.emit_error(ErrorCode::CdataInHtmlContent, start.saturating_sub(9));

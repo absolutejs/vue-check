@@ -64,6 +64,12 @@ for (const expected of lines('oracle.jsonl')) {
 	}
 	/* A file that changes how later files parse: both sides must say so, and
 	 * its own result isn't compared (the project can't use the native codegen). */
+	if (actual.unsupported && actual.poisonsLaterParses && !expected.poisonsLaterParses) {
+		/* A declined file the native side can't rule out: the project falls
+		 * back to the JavaScript codegen, which is always right. */
+		unsupported.push(`${expected.file}: ${actual.unsupported} (and may change later parses)`);
+		continue;
+	}
 	if (Boolean(actual.poisonsLaterParses) !== Boolean(expected.poisonsLaterParses)) {
 		different.push(`${expected.file}: poisons later parses: expected ${expected.poisonsLaterParses}, native ${actual.poisonsLaterParses}`);
 		continue;

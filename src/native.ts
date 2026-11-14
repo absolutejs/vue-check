@@ -15,7 +15,7 @@ import { dirname, isAbsolute, join, relative } from 'node:path';
 /** The versions of @vue/language-core the port reproduces. */
 export const LANGUAGE_CORES = ['3.3.9', '3.3.10', '3.3.11', '3.3.12', '3.3.13', '3.3.14'];
 /** The @vue/compiler-dom patches whose parser the port reproduces (3.5.x). */
-const COMPILER_DOM_PATCHES = [36, 45] as const;
+const COMPILER_DOM_PATCHES = [35, 45] as const;
 const ENTITIES = /^7\.0\./;
 /** Options that don't reach the code of a .vue file: where the types are
  * (given to the port per file), the Vue version (given too), and the
@@ -185,7 +185,7 @@ const portedPackages = (coreRequire: NodeJS.Require) => {
 		const entities = versionOf(join(decode.slice(0, decode.lastIndexOf('/entities/') + 10), 'package.json'));
 		if (!ENTITIES.test(entities)) return `entities ${entities}`;
 
-		return { compilerDom: coreRequire('@vue/compiler-dom') as { parse: (template: string) => { children: { type: number }[] } }, languageCore };
+		return { compilerDom: coreRequire('@vue/compiler-dom') as { parse: (template: string) => { children: { type: number }[] } }, compilerDomVersion, languageCore };
 	} catch (error) {
 		return `its packages could not be read (${error instanceof Error ? error.message : String(error)})`;
 	}
@@ -332,7 +332,7 @@ export const nativeCodegen = (core: unknown, ts: unknown, coreRequire: NodeJS.Re
 				}
 				const input = files
 					.slice(start, end)
-					.map(({ file, text }) => `${JSON.stringify({ core: packages.languageCore, file, options: ported.options, target: options.target, text, typesPath: typesPathOf(file) })}\n`)
+					.map(({ file, text }) => `${JSON.stringify({ compilerDom: packages.compilerDomVersion, core: packages.languageCore, file, options: ported.options, target: options.target, text, typesPath: typesPathOf(file) })}\n`)
 					.join('');
 				const run = spawnSync(binary, ['generate'], { encoding: 'utf8', input, maxBuffer: Number.MAX_SAFE_INTEGER });
 				const lines = run.status === 0 ? run.stdout.split('\n').filter(Boolean) : [];

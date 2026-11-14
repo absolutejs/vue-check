@@ -446,9 +446,25 @@ const vueFiles = (folder: string): string[] =>
 /* The parser keeps its v-pre and <pre> state between parses and never clears
  * it: a file that ends inside v-pre, or that makes the parser throw halfway,
  * changes how every later file parses. That file is recorded, and the rest
- * runs in a new process. */
+ * runs in a new process: this one starts a worker per stretch of files, one
+ * after the other, and each worker leaves where the next one starts. */
 const leaked = () => CompilerDOM.parse('{{ a }}').children[0]?.type !== 5;
-const from = Number(process.argv.find((value) => value.startsWith('--from='))?.split('=')[1] ?? 0);
+const fromArgument = process.argv.find((value) => value.startsWith('--from='));
+const nextFile = join(out, 'next.txt');
+if (fromArgument === undefined) {
+	let next = '0';
+	while (next !== 'done') {
+		writeFileSync(nextFile, '');
+		const worker = Bun.spawnSync([process.execPath, import.meta.path, root, out, `--from=${next}`], { stderr: 'inherit', stdout: 'inherit' });
+		next = readFileSync(nextFile, 'utf8');
+		if (worker.exitCode !== 0 || next === '') {
+			console.error(`the recorder stopped (exit ${worker.exitCode}, signal ${worker.signalCode})`);
+			process.exit(1);
+		}
+	}
+	process.exit(0);
+}
+const from = Number(fromArgument.split('=')[1]);
 const paths = vueFiles(root);
 const files: string[] = [];
 const oracle: string[] = [];
@@ -461,7 +477,7 @@ for (const [index, path] of paths.entries()) {
 	if (index < from) continue;
 	const file = relative(root, path);
 	const source = readFileSync(path, 'utf8');
-	files.push(JSON.stringify({ core: versions.languageCore, file, options: given && 'options' in given ? given.options : {}, target: vueOptions?.target ?? null, text: source, typesPath: typesPathOf(path) }));
+	files.push(JSON.stringify({ compilerDom: versions.compilerDom, core: versions.languageCore, file, options: given && 'options' in given ? given.options : {}, target: vueOptions?.target ?? null, text: source, typesPath: typesPathOf(path) }));
 	const record: Record<string, unknown> = { file, versions };
 	let poisoned = false;
 	try {
@@ -500,10 +516,12 @@ for (const [index, path] of paths.entries()) {
 	oracle.push(JSON.stringify(record));
 	if (poisoned) {
 		flush();
-		const rest = Bun.spawnSync([process.execPath, import.meta.path, root, out, `--from=${index + 1}`], { stderr: 'inherit', stdout: 'inherit' });
-		process.exit(rest.exitCode);
+		writeFileSync(nextFile, String(index + 1));
+		process.exit(0);
 	}
 }
 flush();
 writeFileSync(join(out, 'core.txt'), versions.languageCore);
+writeFileSync(join(out, 'dom.txt'), versions.compilerDom);
+writeFileSync(nextFile, 'done');
 console.log(`${paths.length} files, @vue/language-core ${versions.languageCore}, @vue/compiler-dom ${versions.compilerDom}, entities ${versions.entities}`);
