@@ -61,10 +61,14 @@ for (const expected of lines('oracle.jsonl')) {
 		unsupported.push(`${expected.file}: ${actual.unsupported}`);
 		continue;
 	}
+	/* The original threw and the native side returned a result. */
 	if (expected.threw) {
 		threw.push(`${expected.file}: ${expected.threw}`);
 		continue;
 	}
+	/* The transforms' errors aren't ported: the codegen never reads them. */
+	if (expected.template) delete expected.template.errors;
+	if (actual.template) delete actual.template.errors;
 	/* Blocks and the template are only in the oracle for the ported version. */
 	const found = expected.sfc.template === undefined
 		? difference(expected.sfc.ast, actual.sfc.ast, 'sfc.ast')
@@ -76,4 +80,4 @@ for (const line of different) console.log(`DIFFERENT ${line}`);
 for (const line of unsupported) console.log(`unsupported ${line}`);
 for (const line of threw) console.log(`oracle threw ${line}`);
 console.log(JSON.stringify({ different: different.length, oracleThrew: threw.length, poisonsLaterParses: poisons, same, unsupported: unsupported.length }));
-process.exit(different.length > 0 ? 1 : 0);
+process.exit(different.length + threw.length > 0 ? 1 : 0);

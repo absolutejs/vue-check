@@ -41,9 +41,26 @@ pub fn index_of(text: &str, needle: &str, from: usize) -> Option<usize> {
     text.get(from..)?.find(needle).map(|found| found + from)
 }
 
+/// `@vue/shared`'s `camelize`: `/-(\w)/g`, the letter after each hyphen in
+/// upper case. `\w` is ASCII only.
+pub fn camelize(text: &str) -> String {
+    let mut camelized = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(char) = chars.next() {
+        match chars.peek() {
+            Some(&next) if char == '-' && (next.is_ascii_alphanumeric() || next == '_') => {
+                camelized.push(next.to_ascii_uppercase());
+                chars.next();
+            }
+            _ => camelized.push(char),
+        }
+    }
+    camelized
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{index_of, trim};
+    use super::{camelize, index_of, trim};
 
     #[test]
     fn trims_what_javascript_trims() {
@@ -56,5 +73,13 @@ mod tests {
         assert_eq!(index_of("a in a", "a", 1), Some(5));
         assert_eq!(index_of("abc", "", 9), Some(3));
         assert_eq!(index_of("abc", "d", 0), None);
+    }
+
+    #[test]
+    fn camelizes() {
+        assert_eq!(camelize("foo-bar-baz"), "fooBarBaz");
+        assert_eq!(camelize("a--b"), "a-B");
+        assert_eq!(camelize("-a-"), "A-");
+        assert_eq!(camelize("x-1-_y-é"), "x1_y-é");
     }
 }

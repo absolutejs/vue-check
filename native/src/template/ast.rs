@@ -149,12 +149,68 @@ pub struct Interpolation {
     pub loc: Loc,
 }
 
+/// A run of adjacent text and interpolations, joined by the text transform.
+#[derive(Clone, Debug)]
+pub struct Compound {
+    pub children: Vec<CompoundChild>,
+    pub loc: Loc,
+}
+
+#[derive(Clone, Debug)]
+pub enum CompoundChild {
+    Node(NodeId),
+    /// The ` + ` between two nodes.
+    Text(&'static str),
+}
+
+/// A `v-if` chain: one branch per `v-if`, `v-else-if` and `v-else`.
+#[derive(Clone, Debug)]
+pub struct If {
+    pub branches: Vec<NodeId>,
+    pub loc: Loc,
+}
+
+#[derive(Clone, Debug)]
+pub struct IfBranch {
+    /// `None` for `v-else`.
+    pub condition: Option<SimpleExpression>,
+    pub children: Vec<NodeId>,
+    pub loc: Loc,
+}
+
+/// A `v-for`, around the element it was on.
+#[derive(Clone, Debug)]
+pub struct For {
+    pub parse_result: ForParseResult,
+    pub children: Vec<NodeId>,
+    pub loc: Loc,
+}
+
 #[derive(Clone, Debug)]
 pub enum Node {
     Element(Element),
     Text(Text),
     Comment(Text),
     Interpolation(Interpolation),
+    // Created by the transforms (`transform.rs`).
+    Compound(Compound),
+    If(If),
+    IfBranch(IfBranch),
+    For(Box<For>),
+}
+
+impl Node {
+    pub fn loc(&self) -> &Loc {
+        match self {
+            Self::Element(element) => &element.loc,
+            Self::Text(text) | Self::Comment(text) => &text.loc,
+            Self::Interpolation(interpolation) => &interpolation.loc,
+            Self::Compound(compound) => &compound.loc,
+            Self::If(node) => &node.loc,
+            Self::IfBranch(branch) => &branch.loc,
+            Self::For(node) => &node.loc,
+        }
+    }
 }
 
 /// A compiler error: its code in the original's `ErrorCodes`, and where.
@@ -220,6 +276,9 @@ pub struct Root {
     pub children: Vec<NodeId>,
     pub loc: Loc,
     pub errors: Vec<CompilerError>,
+    /// The components the template uses, in the order the transforms meet
+    /// them (`root.components`). Empty until `transform.rs` has run.
+    pub components: Vec<String>,
 }
 
 impl Root {

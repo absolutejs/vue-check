@@ -40,10 +40,12 @@ fn parse_file(input: &Input) -> Value {
         .as_ref()
         .filter(|block| matches!(block.lang.as_deref(), None | Some("html" | "md")))
         .map(|block| {
-            let parsed = parse(&block.content, ParseOptions::template());
+            let source = template::compile::with_suffix(&block.content);
+            let mut parsed = parse(&source, ParseOptions::template());
             unsupported = unsupported.or(parsed.unsupported);
             poisons_later_parses |= parsed.poisons_later_parses;
-            dump::template(&block.content, &parsed)
+            unsupported = unsupported.or(template::transform::transform(&mut parsed.root));
+            dump::template(&source, &parsed)
         });
     json!({
         "file": input.file,

@@ -6,8 +6,8 @@ use serde_json::{Value, json};
 
 use crate::sfc::{AttrOrTrue, AttrValue, Block, BlockAttr, ParsedSfc};
 use crate::template::ast::{
-    Attribute, ConstantType, Directive, ElementType, Loc, Namespace, Node, NodeId, Prop, Root,
-    SimpleExpression, Text,
+    Attribute, CompoundChild, ConstantType, Directive, ElementType, ForParseResult, Loc, Namespace,
+    Node, NodeId, Prop, Root, SimpleExpression, Text,
 };
 use crate::template::parser::Parsed;
 use crate::utf16::Utf16Map;
@@ -74,12 +74,10 @@ impl Dumper<'_> {
                 .iter()
                 .map(|modifier| self.expression(modifier))
                 .collect::<Vec<_>>(),
-            "forParseResult": directive.for_parse_result.as_ref().map(|result| json!({
-                "source": self.expression(&result.source),
-                "value": optional(&result.value),
-                "key": optional(&result.key),
-                "index": optional(&result.index),
-            })),
+            "forParseResult": directive
+                .for_parse_result
+                .as_ref()
+                .map(|result| self.for_parse_result(result)),
             "loc": self.loc(&directive.loc),
         })
     }
@@ -120,8 +118,51 @@ impl Dumper<'_> {
                 "content": self.expression(&interpolation.content),
                 "loc": self.loc(&interpolation.loc),
             }),
+            Some(Node::Compound(compound)) => json!({
+                "type": 8,
+                "children": compound
+                    .children
+                    .iter()
+                    .map(|child| match child {
+                        CompoundChild::Node(id) => self.node(root, *id),
+                        CompoundChild::Text(text) => json!(text),
+                    })
+                    .collect::<Vec<_>>(),
+                "loc": self.loc(&compound.loc),
+            }),
+            Some(Node::If(node)) => json!({
+                "type": 9,
+                "branches": self.children(root, &node.branches),
+                "loc": self.loc(&node.loc),
+            }),
+            Some(Node::IfBranch(branch)) => json!({
+                "type": 10,
+                "condition": branch.condition.as_ref().map(|condition| self.expression(condition)),
+                "children": self.children(root, &branch.children),
+                "loc": self.loc(&branch.loc),
+            }),
+            Some(Node::For(node)) => json!({
+                "type": 11,
+                "parseResult": self.for_parse_result(&node.parse_result),
+                "children": self.children(root, &node.children),
+                "loc": self.loc(&node.loc),
+            }),
             None => Value::Null,
         }
+    }
+
+    fn for_parse_result(&self, result: &ForParseResult) -> Value {
+        let optional = |expression: &Option<SimpleExpression>| {
+            expression
+                .as_ref()
+                .map(|expression| self.expression(expression))
+        };
+        json!({
+            "source": self.expression(&result.source),
+            "value": optional(&result.value),
+            "key": optional(&result.key),
+            "index": optional(&result.index),
+        })
     }
 
     fn children(&self, root: &Root, children: &[NodeId]) -> Vec<Value> {
@@ -132,6 +173,7 @@ impl Dumper<'_> {
         json!({
             "children": self.children(&parsed.root, &parsed.root.children),
             "loc": self.loc(&parsed.root.loc),
+            "components": parsed.root.components,
             "errors": parsed
                 .root
                 .errors

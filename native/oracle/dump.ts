@@ -90,11 +90,33 @@ const node = (value: AnyNode): unknown => {
 			type: 1
 		};
 	if (value.type === 5) return { content: expression(value.content), loc: loc(value.loc), type: 5 };
+	/* What the transforms create: joined text, v-if chains and v-for. */
+	if (value.type === 8)
+		return { children: value.children.map((child: AnyNode | string) => (typeof child === 'string' ? child : node(child))), loc: loc(value.loc), type: 8 };
+	if (value.type === 9) return { branches: value.branches.map(node), loc: loc(value.loc), type: 9 };
+	if (value.type === 10) return { children: value.children.map(node), condition: expression(value.condition), loc: loc(value.loc), type: 10 };
+	if (value.type === 11)
+		return {
+			children: value.children.map(node),
+			loc: loc(value.loc),
+			parseResult: {
+				index: expression(value.parseResult.index),
+				key: expression(value.parseResult.key),
+				source: expression(value.parseResult.source),
+				value: expression(value.parseResult.value)
+			},
+			type: 11
+		};
 
 	return text(value);
 };
 const errorOf = (error: AnyNode) => [error.code, error.loc?.start.offset ?? null, error.loc?.start.line ?? null];
-const tree = (ast: AnyNode, errors: AnyNode[]) => ({ children: ast.children.map(node), errors: errors.map(errorOf), loc: loc(ast.loc) });
+const tree = (ast: AnyNode, errors: AnyNode[]) => ({
+	children: ast.children.map(node),
+	components: ast.components,
+	errors: errors.map(errorOf),
+	loc: loc(ast.loc)
+});
 
 const attr = (value: unknown) => (value === undefined ? null : value === true ? true : { offset: (value as AnyNode).offset, text: (value as AnyNode).text });
 const block = (value: AnyNode | null | undefined) =>
@@ -128,17 +150,18 @@ const sfcTree = (source: string) => {
 
 	return tree(ast, errors);
 };
-/** A template's tree, parsed as template/compile.ts parses it. */
-const templateTree = (source: string) => {
+/** A template's tree after language-core's transforms, compiled the way its
+ * vue-template-html plugin compiles an HTML template. */
+const templateHtml = ported ? coreRequire(join(dirname(corePackage), 'lib/plugins/vue-template-html.js')).default({}) : null;
+const templateTree = (lang: string, source: string) => {
 	const errors: AnyNode[] = [];
-	const ast = CompilerDOM.parse(source, {
-		comments: true,
+	const result = templateHtml.compileSFCTemplate(lang, source, {
 		expressionPlugins: ['typescript'],
 		onError: (error: AnyNode) => errors.push(error),
 		onWarn: () => {}
 	});
 
-	return tree(ast, errors);
+	return result ? tree(result.ast, errors) : null;
 };
 
 const SKIPPED = new Set(['node_modules', '.git', '.vue-check', 'dist']);
@@ -189,7 +212,7 @@ for (const [index, path] of paths.entries()) {
 				template: block(descriptor.template)
 			};
 			const template = descriptor.template;
-			record.template = template && (template.lang ?? 'html').match(/^(html|md)$/) ? templateTree(template.content) : null;
+			record.template = template ? templateTree(template.lang ?? 'html', template.content) : null;
 			poisoned = leaked();
 		} else record.sfc = { ast };
 	} catch (error) {

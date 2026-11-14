@@ -7,6 +7,8 @@
 # borrows another checkout's node_modules, MODULES=<path> (as bench/run-in-docker.sh).
 set -euo pipefail
 project=$(realpath "$1"); out=$(realpath -m "$2")
+# Docker would create a missing folder itself, owned by root.
+[ -d "$project" ] || { echo "no such project: $project" >&2; exit 1; }
 tool=$(realpath "$(dirname "$0")/../..")
 bun_binary=${BUN_BINARY:-$(command -v bun)}
 mkdir -p "$out"

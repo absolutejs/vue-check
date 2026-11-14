@@ -362,6 +362,7 @@ pub fn parse(input: &str, options: ParseOptions) -> Parsed {
             children,
             loc,
             errors: parser.errors,
+            components: Vec::new(),
         },
         unsupported: parser.unsupported.or(parser.throws),
         poisons_later_parses: parser.in_v_pre || parser.throws.is_some(),
@@ -1856,11 +1857,7 @@ impl<'a> Parser<'a> {
                 .element_ref(id)
                 .and_then(|element| element.children.last().copied())
                 .and_then(|child| self.nodes.get(child.0))
-                .map(|child| match child {
-                    Node::Element(element) => element.loc.end,
-                    Node::Text(text) | Node::Comment(text) => text.loc.end,
-                    Node::Interpolation(interpolation) => interpolation.loc.end,
-                });
+                .map(|child| child.loc().end);
             if let Some(inner_loc) = self.element_ref(id).and_then(|element| element.inner_loc) {
                 let inner_end = last_child_end.unwrap_or(inner_loc.start);
                 let mut inner_loc = self.get_loc(inner_loc.start.offset, inner_end.offset);
@@ -1997,7 +1994,7 @@ impl<'a> Parser<'a> {
                 Some(Node::Element(_)) => Kind::Element,
                 Some(Node::Comment(_)) => Kind::Comment,
                 Some(Node::Text(_)) => Kind::Text,
-                Some(Node::Interpolation(_)) | None => Kind::Other,
+                Some(_) | None => Kind::Other,
             })
             .collect();
         let mut removed = vec![false; nodes.len()];

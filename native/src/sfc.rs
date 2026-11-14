@@ -164,13 +164,8 @@ fn create_block(
     let mut start = node.loc.start;
     let end;
     let mut content = "";
-    let loc_end = |id: &crate::template::ast::NodeId| {
-        parsed.root.node(*id).map(|child| match child {
-            Node::Element(element) => element.loc,
-            Node::Text(text) | Node::Comment(text) => text.loc,
-            Node::Interpolation(interpolation) => interpolation.loc,
-        })
-    };
+    let loc_end =
+        |id: &crate::template::ast::NodeId| parsed.root.node(*id).map(|child| *child.loc());
     if let (Some(first), Some(last)) = (
         node.children.first().and_then(loc_end),
         node.children.last().and_then(loc_end),
