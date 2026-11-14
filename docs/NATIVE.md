@@ -134,7 +134,8 @@ is unchanged with native codegen on. Native is on by default where the versions 
 so `bench/codegen-bar.sh <project> <tsconfig> <out>` reruns the comparison for one project.
 
 The codegen phase and the whole run, as medians of five runs from `bench/run.ts` on the same
-machine as the README's tables. The JavaScript figures are those tables' figures.
+machine as the README's tables. The native figures are those tables' figures; the JavaScript ones
+are the same projects with `VUE_CHECK_NATIVE=0`, measured before.
 
 | project | Vue files | native | codegen, JavaScript | codegen, native | whole run, JavaScript | whole run, native |
 |---|---|---|---|---|---|---|

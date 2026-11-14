@@ -25,7 +25,10 @@ to `tsc`, running in Node over the whole project.
 previous one has exited, so peak memory is the largest step, not their sum:
 
 1. **The same codegen.** It runs the `@vue/language-core` your project's `vue-tsc` uses, set up the way
-   `vue-tsc` sets it up, and writes the generated TypeScript to `.vue-check/`.
+   `vue-tsc` sets it up, and writes the generated TypeScript to `.vue-check/`. For a project on
+   `@vue/language-core` 3.3.14 with default `vueCompilerOptions`, a native port of that exact codegen
+   writes the same files, byte for byte, faster ([docs/NATIVE.md](docs/NATIVE.md)); any other
+   project, and any file the port declines, gets the JavaScript codegen as before.
 2. **The same program, on Bun's checker.** `bun check` checks your project and the generated files as
    one program, file for file the one `vue-tsc` builds: the same root files in the same order, with
    `rootDirs` and your path aliases joining the two trees, so `import Foo from './Foo.vue'` (or
@@ -62,18 +65,21 @@ equality (every code, message, file, line and column):
 Measured in an isolated container (no network, memory-capped). Memory is the peak RSS of the whole
 process tree, so every `vue-check` process is counted. Times are wall clock; the figures are medians.
 
+gitea, slidev and the two vitepress projects are on `@vue/language-core` 3.3.14, so their code is
+generated natively; the others by their own JavaScript codegen.
+
 <!-- RESULTS -->
 
 | Project | vue-tsc | vue-check | vue-check (1 thread) | Faster | Less memory |
 |---|---|---|---|---|---|
 | element-plus | 18.9 s · 1220 MB | 5.43 s · 420 MB | 6.65 s · 420 MB | 3.5× | 2.9× |
-| gitea | 10.49 s · 1015 MB | 1.97 s · 314 MB | 2.5 s · 271 MB | 5.3× | 3.2× |
+| gitea | 9.97 s · 1012 MB | 1.41 s · 316 MB | 1.88 s · 272 MB | 7.1× | 3.2× |
 | halo-console-components | 2.58 s · 301 MB | 1.39 s · 227 MB | 1.61 s · 230 MB | 1.9× | 1.3× |
 | naive-ui-admin | 8.61 s · 914 MB | 2.43 s · 303 MB | 2.88 s · 301 MB | 3.5× | 3.0× |
-| slidev | 4.43 s · 741 MB | 1.71 s · 285 MB | 2.04 s · 285 MB | 2.6× | 2.6× |
+| slidev | 4.14 s · 740 MB | 1.07 s · 246 MB | 1.24 s · 242 MB | 3.9× | 3.0× |
 | soybean-admin | 1.56 s · 577 MB | 1.71 s · 270 MB | 1.76 s · 271 MB | 0.9× | 2.1× |
-| vitepress-client | 3.93 s · 366 MB | 2.05 s · 268 MB | 1.78 s · 264 MB | 1.9× | 1.4× |
-| vitepress-docs | 1.66 s · 302 MB | 0.73 s · 185 MB | 0.76 s · 182 MB | 2.3× | 1.6× |
+| vitepress-client | 3.42 s · 364 MB | 1 s · 205 MB | 1.09 s · 202 MB | 3.4× | 1.8× |
+| vitepress-docs | 1.68 s · 302 MB | 0.68 s · 161 MB | 0.7 s · 162 MB | 2.5× | 1.9× |
 | vue-element-plus-admin | 5.49 s · 537 MB | 1.38 s · 235 MB | 1.72 s · 238 MB | 4.0× | 2.3× |
 | vue-pure-admin | 19.15 s · 1466 MB | 4.33 s · 410 MB | 5.12 s · 409 MB | 4.4× | 3.6× |
 | vue-vben-admin | 23.17 s · 1445 MB | 4.54 s · 447 MB | 5.92 s · 421 MB | 5.1× | 3.2× |
@@ -96,13 +102,13 @@ process tree, so every `vue-check` process is counted. Times are wall clock; the
 | Project | Vue files | Codegen | bun check | Mapping |
 |---|---|---|---|---|
 | element-plus | 165 | 2.26 s · 339 MB | 0.92 s · 297 MB | 2.17 s · 420 MB |
-| gitea | 26 | 1.21 s · 238 MB | 0.39 s · 275 MB | 0.33 s · 140 MB |
+| gitea | 26 | 0.69 s · 180 MB | 0.36 s · 277 MB | 0.35 s · 142 MB |
 | halo-console-components | 31 | 0.97 s · 193 MB | 0.09 s · 100 MB | 0.23 s · 98 MB |
 | naive-ui-admin | 68 | 1.52 s · 269 MB | 0.32 s · 257 MB | 0.55 s · 188 MB |
-| slidev | 121 | 1.55 s · 252 MB | 0.15 s · 206 MB | 0 s · 40 MB |
+| slidev | 121 | 0.94 s · 211 MB | 0.13 s · 206 MB | 0 s · 40 MB |
 | soybean-admin | 90 | 1.57 s · 236 MB | 0.13 s · 169 MB | 0 s · 39 MB |
-| vitepress-client | 66 | 1.47 s · 234 MB | 0.12 s · 109 MB | 0.39 s · 121 MB |
-| vitepress-docs | 4 | 0.49 s · 151 MB | 0.06 s · 106 MB | 0.15 s · 87 MB |
+| vitepress-client | 66 | 0.59 s · 171 MB | 0.09 s · 112 MB | 0.3 s · 121 MB |
+| vitepress-docs | 4 | 0.44 s · 126 MB | 0.06 s · 110 MB | 0.16 s · 89 MB |
 | vue-element-plus-admin | 34 | 0.9 s · 201 MB | 0.16 s · 175 MB | 0.31 s · 121 MB |
 | vue-pure-admin | 255 | 2.82 s · 369 MB | 0.98 s · 353 MB | 0.45 s · 192 MB |
 | vue-vben-admin | 376 | 2.58 s · 390 MB | 0.98 s · 391 MB | 0.92 s · 299 MB |

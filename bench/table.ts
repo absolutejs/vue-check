@@ -23,8 +23,10 @@ type Result = {
 
 const root = join(import.meta.dir, '..');
 const directory = join(root, 'bench/results');
+/* A result file git ignores is one that isn't published: it never reaches the tables. */
+const ignored = (file: string) => Bun.spawnSync(['git', 'check-ignore', '-q', join(directory, file)], { cwd: root }).exitCode !== 1;
 const results = readdirSync(directory)
-	.filter((file) => file.endsWith('.json') && !file.endsWith('.raw.json') && file !== 'conformance.json')
+	.filter((file) => file.endsWith('.json') && !file.endsWith('.raw.json') && file !== 'conformance.json' && !ignored(file))
 	.sort()
 	.map((file) => ({ name: file.replace(/\.json$/, ''), result: JSON.parse(readFileSync(join(directory, file), 'utf8')) as Result }));
 
