@@ -190,9 +190,9 @@ const portedPackages = (coreRequire: NodeJS.Require) => {
 	}
 };
 
-/* The options the port reads, which a project may set: the checks strict
- * templates turn on, what a template's $attrs, $el, $refs and $slots are
- * typed from, and which attributes fall through. */
+/* The options the port reads as true or false, which a project may set: the
+ * checks strict templates turn on, what a template's $attrs, $el, $refs and
+ * $slots are typed from, and which attributes fall through. */
 const PORTED_FLAGS = new Set([
 	'strictVModel',
 	'checkUnknownProps',
@@ -210,6 +210,23 @@ const PORTED_FLAGS = new Set([
 	'jsxSlots'
 ]);
 const isNames = (value: unknown): value is string[] => Array.isArray(value) && value.every((name) => typeof name === 'string');
+/** Each macro or composable, with the list of names it goes by. */
+const isNamesOf =
+	(known: string[]) =>
+	(value: unknown) =>
+		typeof value === 'object' && value !== null && !Array.isArray(value) && Object.entries(value).every(([name, names]) => known.includes(name) && isNames(names));
+/* The other options the port reads, each with the values it reads them as. */
+const PORTED_OPTIONS: Record<string, (value: unknown) => boolean> = {
+	composables: isNamesOf(['useAttrs', 'useCssModule', 'useSlots', 'useTemplateRef']),
+	dataAttributes: isNames,
+	fallthroughComponentNames: isNames,
+	htmlAttributes: isNames,
+	lib: (value) => typeof value === 'string',
+	macros: isNamesOf(['defineProps', 'defineSlots', 'defineEmits', 'defineExpose', 'defineModel', 'defineOptions', 'withDefaults']),
+	optionsWrapper: (value) => isNames(value) && (value.length === 0 || value.length === 2),
+	resolveStyleClassNames: (value) => typeof value === 'boolean' || value === 'scoped',
+	strictCssModules: (value) => typeof value === 'boolean'
+};
 
 /**
  * The project's options that aren't the defaults, for the binary; or
@@ -233,7 +250,7 @@ export const portedOptions = (core: unknown, ts: unknown, vueOptions: unknown): 
 		if (FREE_OPTIONS.has(key)) continue;
 		const value = project[key];
 		if (JSON.stringify(value) === JSON.stringify(defaults[key])) continue;
-		const ported = PORTED_FLAGS.has(key) ? typeof value === 'boolean' : key === 'fallthroughComponentNames' && isNames(value);
+		const ported = PORTED_FLAGS.has(key) ? typeof value === 'boolean' : (PORTED_OPTIONS[key]?.(value) ?? false);
 		if (!ported) return { changed: key };
 		options[key] = value;
 	}

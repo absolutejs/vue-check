@@ -264,6 +264,37 @@ fn derive(
     derived
 }
 
+/// The project's compiler options (`vueCompilerOptions`), as far as the port
+/// reads them.
+#[derive(Clone, Debug)]
+pub struct FileOptions {
+    pub compiler: CompilerFlags,
+    /// The macros and composables, by the names the project gives them.
+    pub analysis: script::ScriptOptions,
+    pub jsx_slots: bool,
+    pub resolve_class_names: ResolveClassNames,
+    pub strict_css_modules: bool,
+    /// `optionsWrapper`: what an options object is wrapped in, if anything.
+    pub options_wrapper: Option<(String, String)>,
+}
+
+impl Default for FileOptions {
+    /// The options of a project that sets none.
+    fn default() -> Self {
+        Self {
+            compiler: CompilerFlags::default(),
+            analysis: script::ScriptOptions::default(),
+            jsx_slots: false,
+            resolve_class_names: ResolveClassNames::Scoped,
+            strict_css_modules: false,
+            options_wrapper: Some((
+                "(await import('vue')).defineComponent(".to_owned(),
+                ")".to_owned(),
+            )),
+        }
+    }
+}
+
 /// Generates a file's code, with the project's compiler options.
 /// `file_name` is the file's base name, and `types_path` the folder of
 /// language-core's type declarations as the file's `/// <reference>` lines
@@ -277,9 +308,16 @@ pub fn generate_file(
     file_name: &str,
     types_path: &str,
     target: f64,
-    compiler: &CompilerFlags,
-    jsx_slots: bool,
+    options: &FileOptions,
 ) -> Result<GeneratedFile, Declined> {
+    let FileOptions {
+        compiler,
+        analysis,
+        jsx_slots,
+        resolve_class_names,
+        strict_css_modules,
+        options_wrapper,
+    } = options;
     let sfc = parse_sfc(source);
     if sfc.parsed.poisons_later_parses {
         return Err(Declined {
@@ -330,12 +368,11 @@ pub fn generate_file(
     };
     let lang = compute_lang(script_lang, setup_lang);
     let is_ts = matches!(lang, "ts" | "tsx");
-    let analysis = script::ScriptOptions::default();
 
     // The script blocks' analysis.
     let script_ranges = match blocks.script.zip(script_lang.and_then(valid_lang)) {
         Some((block, lang)) => {
-            Some(parse_script_ranges(&block.content, lang, &analysis).map_err(Declined::file)?)
+            Some(parse_script_ranges(&block.content, lang, analysis).map_err(Declined::file)?)
         }
         None => None,
     };
@@ -346,7 +383,7 @@ pub fn generate_file(
     };
     let setup_ranges = match setup_content.zip(setup_lang.and_then(valid_lang)) {
         Some((content, lang)) => {
-            Some(parse_script_setup_ranges(content, lang, &analysis).map_err(Declined::file)?)
+            Some(parse_script_setup_ranges(content, lang, analysis).map_err(Declined::file)?)
         }
         None => None,
     };
@@ -490,8 +527,8 @@ pub fn generate_file(
                 styles: &styles,
                 is_ts,
                 lib: &compiler.lib,
-                resolve_class_names: ResolveClassNames::Scoped,
-                strict_css_modules: false,
+                resolve_class_names: *resolve_class_names,
+                strict_css_modules: *strict_css_modules,
                 setup_refs: &derived.setup_refs,
                 setup_consts: &derived.setup_consts,
                 setup_bindings: &derived.setup_bindings,
@@ -612,8 +649,10 @@ pub fn generate_file(
             infer_component_dollar_el: compiler.infer_component_dollar_el,
             infer_template_dollar_attrs: compiler.infer_template_dollar_attrs,
             infer_template_dollar_slots: compiler.infer_template_dollar_slots,
-            jsx_slots,
-            options_wrapper: Some(("(await import('vue')).defineComponent(", ")")),
+            jsx_slots: *jsx_slots,
+            options_wrapper: options_wrapper
+                .as_ref()
+                .map(|(left, right)| (left.as_str(), right.as_str())),
             types_path,
             is_ts,
             script: blocks.script.map(|block| block.content.as_str()),

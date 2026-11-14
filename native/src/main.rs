@@ -501,16 +501,59 @@ struct GenerateOptions {
     check_required_fallthrough_attributes: Option<bool>,
     jsx_slots: Option<bool>,
     fallthrough_component_names: Option<Vec<String>>,
+    data_attributes: Option<Vec<String>>,
+    html_attributes: Option<Vec<String>>,
+    lib: Option<String>,
+    /// Two strings, or none.
+    options_wrapper: Option<Vec<String>>,
+    macros: Option<Names>,
+    composables: Option<Names>,
+    resolve_style_class_names: Option<StyleClassNames>,
+    strict_css_modules: Option<bool>,
+}
+
+/// A list of names each macro or composable goes by, as the project has it.
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Names {
+    define_props: Option<Vec<String>>,
+    define_slots: Option<Vec<String>>,
+    define_emits: Option<Vec<String>>,
+    define_expose: Option<Vec<String>>,
+    define_model: Option<Vec<String>>,
+    define_options: Option<Vec<String>>,
+    with_defaults: Option<Vec<String>>,
+    use_attrs: Option<Vec<String>>,
+    use_css_module: Option<Vec<String>>,
+    use_slots: Option<Vec<String>>,
+    use_template_ref: Option<Vec<String>>,
+}
+
+/// `resolveStyleClassNames`: `true`, `false` or `"scoped"`.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StyleClassNames {
+    All(bool),
+    Scoped(Scoped),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Scoped {
+    Scoped,
 }
 
 impl GenerateOptions {
-    fn compiler_flags(&self) -> codegen::template::generate::CompilerFlags {
-        let mut flags = codegen::template::generate::CompilerFlags::default();
+    fn file_options(&self) -> codegen::file::FileOptions {
+        use codegen::style::ResolveClassNames;
+
+        let mut options = codegen::file::FileOptions::default();
         let set = |flag: &mut bool, value: Option<bool>| {
             if let Some(value) = value {
                 *flag = value;
             }
         };
+        let flags = &mut options.compiler;
         set(&mut flags.strict_v_model, self.strict_v_model);
         set(&mut flags.check_unknown_props, self.check_unknown_props);
         set(&mut flags.check_unknown_events, self.check_unknown_events);
@@ -527,10 +570,50 @@ impl GenerateOptions {
             &mut flags.check_required_fallthrough_attributes,
             self.check_required_fallthrough_attributes,
         );
-        if let Some(names) = &self.fallthrough_component_names {
-            flags.fallthrough_component_names.clone_from(names);
+        let names = |list: &mut Vec<String>, value: &Option<Vec<String>>| {
+            if let Some(value) = value {
+                list.clone_from(value);
+            }
+        };
+        names(&mut flags.fallthrough_component_names, &self.fallthrough_component_names);
+        names(&mut flags.data_attributes, &self.data_attributes);
+        names(&mut flags.html_attributes, &self.html_attributes);
+        if let Some(lib) = &self.lib {
+            flags.lib.clone_from(lib);
         }
-        flags
+        let analysis = &mut options.analysis;
+        for given in [&self.macros, &self.composables].into_iter().flatten() {
+            names(&mut analysis.define_props, &given.define_props);
+            names(&mut analysis.define_slots, &given.define_slots);
+            names(&mut analysis.define_emits, &given.define_emits);
+            names(&mut analysis.define_expose, &given.define_expose);
+            names(&mut analysis.define_model, &given.define_model);
+            names(&mut analysis.define_options, &given.define_options);
+            names(&mut analysis.with_defaults, &given.with_defaults);
+            names(&mut analysis.use_attrs, &given.use_attrs);
+            names(&mut analysis.use_css_module, &given.use_css_module);
+            names(&mut analysis.use_slots, &given.use_slots);
+            names(&mut analysis.use_template_ref, &given.use_template_ref);
+        }
+        set(&mut options.jsx_slots, self.jsx_slots);
+        set(&mut options.strict_css_modules, self.strict_css_modules);
+        match &self.resolve_style_class_names {
+            Some(StyleClassNames::All(true)) => options.resolve_class_names = ResolveClassNames::All,
+            Some(StyleClassNames::All(false)) => {
+                options.resolve_class_names = ResolveClassNames::None;
+            }
+            Some(StyleClassNames::Scoped(Scoped::Scoped)) => {
+                options.resolve_class_names = ResolveClassNames::Scoped;
+            }
+            None => {}
+        }
+        if let Some(wrapper) = &self.options_wrapper {
+            options.options_wrapper = match wrapper.as_slice() {
+                [left, right] => Some((left.clone(), right.clone())),
+                _ => None,
+            };
+        }
+        options
     }
 }
 
@@ -544,8 +627,7 @@ fn generate_one(input: &GenerateInput) -> Value {
         name,
         input.types_path.as_deref().unwrap_or(""),
         input.target.unwrap_or(99.0),
-        &input.options.compiler_flags(),
-        input.options.jsx_slots.unwrap_or(false),
+        &input.options.file_options(),
     ) {
         Ok(generated) => {
             let mappings: Vec<Value> = generated
