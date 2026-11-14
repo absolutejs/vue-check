@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative } from 'node:path';
@@ -30,7 +31,11 @@ export type NativeMapping = {
 	verification: 0 | 1 | 'ts2353' | 'ts6133';
 };
 export type NativeResult =
-	| { generated: { id: string; languageId: string; mappings: NativeMapping[]; text: string } }
+	| {
+			generated: { id: string; languageId: string; mappings: NativeMapping[]; text: string };
+			/** What the generated code imports (see importReader); null when the port can't say. */
+			imports: string[] | null;
+	  }
 	| { poisonsLaterParses: boolean; unsupported: string };
 
 export type NativeCodegen = {
@@ -72,6 +77,92 @@ const binaryPath = () => {
 	const path = configured || installedBinary() || join(import.meta.dir, '..', 'native', 'target', 'release', 'vue-check-codegen');
 
 	return existsSync(path) ? path : null;
+};
+
+/* The import reader (native/src/imports) is a port of TypeScript's
+ * preProcessFile, of the scanner under it and of what those two read. A
+ * TypeScript it reproduces is one where all of that is, text for text, what
+ * was ported: these are hashes of that source (importReaderSignature), each
+ * compared with the port value for value (native/oracle/run-imports.sh). */
+const IMPORT_READERS = new Set([
+	/* TypeScript 5.7.3, 5.8.2, 5.8.3, 5.9.2 and 5.9.3. */
+	'924fcc09914b18743f6c02be832ac0f242116cc3ee4c2f42bb7cbe01545c2db1',
+	/* TypeScript 6.0.2 and 6.0.3. */
+	'35a547da03174667bf667d928e72724c6b1a601c7ea5d73de6ed3d1e111529b2',
+	/* typescript-native-bridge 6.0.3-bridge.19.tsgo.7.0.2 (6.0.3's, bundled with one local renamed). */
+	'192b9c616d9ef14401b3d6337b781544cbb17af84e9b27da8015cb09a9e924a3'
+]);
+const PORTED_FUNCTIONS = [
+	'preProcessFile',
+	'createScanner',
+	'isConflictMarkerTrivia',
+	'scanConflictMarkerTrivia',
+	'isShebangTrivia',
+	'scanShebangTrivia',
+	'isWhiteSpaceSingleLine',
+	'isLineBreak',
+	'isIdentifierStart',
+	'isIdentifierPart',
+	'isUnicodeIdentifierStart',
+	'isUnicodeIdentifierPart',
+	'lookupInUnicodeMap',
+	'isDigit',
+	'isOctalDigit',
+	'isHexDigit',
+	'charSize',
+	'isASCIILetter',
+	'isWordCharacter',
+	'codePointAt',
+	'utf16EncodeAsString'
+];
+/* The keywords themselves aren't here: preProcessFile treats a keyword and
+ * an identifier alike, apart from the eight it names in its own text. */
+const PORTED_VARIABLES = ['unicodeESNextIdentifierStart', 'unicodeESNextIdentifierPart', 'shebangTriviaRegex', 'mergeConflictMarkerLength', 'textToKeyword'];
+
+/** A hash of the source of everything the import reader reproduces, in the
+ * TypeScript at `file` (its lib/typescript.js); null when a part isn't found. */
+export const importReaderSignature = (file: string) => {
+	const source = readFileSync(file);
+	const hash = createHash('sha256');
+	const part = (start: string, end: string) => {
+		const from = source.indexOf(start);
+		const to = from < 0 ? -1 : source.indexOf(end, from);
+		if (to < 0) return false;
+		hash.update(source.subarray(from, to));
+
+		return true;
+	};
+	for (const name of PORTED_FUNCTIONS) if (!part(`\nfunction ${name}(`, '\n}\n')) return null;
+	for (const name of PORTED_VARIABLES) if (!part(`\nvar ${name} = `, ';\n')) return null;
+
+	return hash.digest('hex');
+};
+
+/**
+ * What each file imports, as the project's `ts.preProcessFile(text, true,
+ * true).importedFiles` names them, read by the binary across the machine's
+ * cores; null for a file the port leaves to TypeScript. Or null, when the
+ * project's TypeScript (the one at `typescriptFile`) isn't one the port
+ * reproduces.
+ */
+export const importReader = (typescriptFile: string): ((files: string[]) => (string[] | null)[]) | null => {
+	const binary = binaryPath();
+	if (!binary) return null;
+	try {
+		if (!IMPORT_READERS.has(importReaderSignature(typescriptFile) ?? '')) return null;
+	} catch {
+		return null;
+	}
+
+	return (files) => {
+		if (files.length === 0) return [];
+		const input = files.map((file) => `${JSON.stringify({ file })}\n`).join('');
+		const run = spawnSync(binary, ['imports'], { encoding: 'utf8', input, maxBuffer: Number.MAX_SAFE_INTEGER });
+		const lines = run.status === 0 ? run.stdout.split('\n').filter(Boolean) : [];
+		if (lines.length !== files.length) throw new Error(`the native import reader failed: ${run.stderr || run.error?.message || `exit ${run.status}`}`);
+
+		return lines.map((line) => (JSON.parse(line) as { imports?: string[] }).imports ?? null);
+	};
 };
 
 /** The packages Vue's codegen would run with, when they are exactly the ones

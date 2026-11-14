@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import * as ownVolar from '@volar/language-core';
 import * as ownCore from '@vue/language-core';
 import ownTs from 'typescript';
-import { nativeCodegen, type NativeResult } from './native';
+import { importReader, nativeCodegen, type NativeResult } from './native';
 
 /* The project's own codegen, as its vue-tsc would use: the same
  * @vue/language-core (and its TypeScript) the project installed, so
@@ -59,11 +59,27 @@ const projectModules = (root: string) => {
 		return null;
 	})();
 
+	const ts = load<typeof ownTs>('typescript', ownTs, [projectRequire, fromVueTsc], (value) => typeof value?.sys?.readFile === 'function');
+	/* The file that TypeScript was loaded from. */
+	const typescriptFile = (() => {
+		for (const requirer of [projectRequire, fromVueTsc]) {
+			if (!requirer) continue;
+			try {
+				if (requirer('typescript') === ts) return requirer.resolve('typescript');
+			} catch {
+				// Not resolvable from here.
+			}
+		}
+
+		return createRequire(import.meta.url).resolve('typescript');
+	})();
+
 	return {
 		core: load<typeof ownCore>('@vue/language-core', ownCore, [fromVueTsc, projectRequire]),
 		/* Resolves what the codegen itself resolves (its compiler, say). */
 		coreRequire: coreRequire ?? createRequire(import.meta.resolve('@vue/language-core/package.json')),
-		ts: load<typeof ownTs>('typescript', ownTs, [projectRequire, fromVueTsc], (value) => typeof value?.sys?.readFile === 'function'),
+		ts,
+		typescriptFile,
 		volar: load<typeof ownVolar>('@volar/language-core', ownVolar, [coreRequire, fromVueTsc, projectRequire])
 	};
 };
@@ -244,7 +260,7 @@ type GenerateResult = {
  * gives the same text and offsets the check saw.
  */
 export const generate = (options: { native?: false; only?: string[]; outDir: string; root: string; tsconfig: string }): GenerateResult => {
-	const { core, coreRequire, ts, volar } = projectModules(options.root);
+	const { core, coreRequire, ts, typescriptFile, volar } = projectModules(options.root);
 	const parsed = core.createParsedCommandLine(ts, ts.sys, options.tsconfig);
 	/* As vue-tsc sets up its plugin: versions that keep Vue's global types in
 	 * a file have vue-tsc write it (createGlobalTypesWriter); later ones don't. */
@@ -361,8 +377,40 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 
 		return resolved;
 	};
-	const scan = (file: string, text: string) => {
-		for (const { fileName: name } of ts.preProcessFile(text, true, true).importedFiles) {
+	const followed = (resolved: string | undefined): resolved is string =>
+		Boolean(resolved) && !resolved?.endsWith('.d.ts') && !resolved?.includes('/node_modules/');
+	const importsIn = (text: string) => ts.preProcessFile(text, true, true).importedFiles.map((imported) => imported.fileName);
+	/* What each source file imports, read natively and ahead of the walk
+	 * below (see importReader): the files given, then every file they reach.
+	 * The walk asks TypeScript itself about any file that isn't here. */
+	const reader = options.only ? null : importReader(typescriptFile);
+	const imports = new Map<string, string[]>();
+	const asked = new Set<string>();
+	const readAhead = (files: string[]) => {
+		if (!reader) return;
+		let wave = files.filter((file) => !asked.has(file));
+		while (wave.length > 0) {
+			for (const file of wave) asked.add(file);
+			const next: string[] = [];
+			for (const [index, names] of reader(wave).entries()) {
+				const file = wave[index];
+				if (!names || file === undefined) continue;
+				imports.set(file, names);
+				for (const name of names) {
+					if (isVue(name)) continue;
+					const resolved = resolveFrom(name, file);
+					if (followed(resolved) && !asked.has(resolved)) {
+						asked.add(resolved);
+						next.push(resolved);
+					}
+				}
+			}
+			wave = next;
+		}
+	};
+	const importsOf = (file: string) => imports.get(file) ?? importsIn(readFileSync(file, 'utf8'));
+	const scan = (file: string, names: string[]) => {
+		for (const name of names) {
 			if (isVue(name)) {
 				const target = vueTarget(name, file);
 				if (target && !queued.has(target)) {
@@ -372,17 +420,20 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 				continue;
 			}
 			const resolved = resolveFrom(name, file);
-			if (!resolved || resolved.endsWith('.d.ts') || resolved.includes('/node_modules/') || scanned.has(resolved)) continue;
+			if (!followed(resolved) || scanned.has(resolved)) continue;
 			scanned.add(resolved);
-			scan(resolved, readFileSync(resolved, 'utf8'));
+			scan(resolved, importsOf(resolved));
 		}
 	};
-	if (!options.only)
-		for (const file of projectFiles)
-			if (!isVue(file) && !file.endsWith('.d.ts') && !file.includes('/node_modules/') && !scanned.has(file)) {
+	if (!options.only) {
+		const sourceFiles = projectFiles.filter((file) => !isVue(file) && followed(file));
+		readAhead(sourceFiles);
+		for (const file of sourceFiles)
+			if (!scanned.has(file)) {
 				scanned.add(file);
-				scan(file, readFileSync(file, 'utf8'));
+				scan(file, importsOf(file));
 			}
+	}
 	/* The JavaScript codegen's answer for the whole project, when the native
 	 * one can't be used for it after all. */
 	const withoutNative = () => generate({ ...options, native: false });
@@ -391,6 +442,7 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 			const batch = [file, ...queue].filter((queuedFile) => queuedFile.endsWith('.vue') && !nativeResults.has(queuedFile));
 			for (const queuedFile of batch) sources.set(queuedFile, readFileSync(queuedFile, 'utf8'));
 			const results = native.generate(batch.map((queuedFile) => ({ file: queuedFile, text: sources.get(queuedFile) ?? '' })));
+			const reached: string[] = [];
 			for (const [index, queuedFile] of batch.entries()) {
 				const result = results[index];
 				if (!result) continue;
@@ -398,7 +450,14 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 				 * such a file does to the files after it. */
 				if ('unsupported' in result && result.poisonsLaterParses) return withoutNative();
 				nativeResults.set(queuedFile, result);
+				/* The source files this file's generated code reaches. */
+				if ('generated' in result && result.imports)
+					for (const name of result.imports) {
+						const resolved = isVue(name) ? undefined : resolveFrom(name, queuedFile);
+						if (followed(resolved)) reached.push(resolved);
+					}
 			}
+			readAhead(reached);
 		}
 		const text = read(file);
 		const nativeResult = nativeResults.get(file);
@@ -453,7 +512,7 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 				});
 			const { extension, prefix } = twin;
 			const target = mirrorOf(options.outDir, file) + extension;
-			if (!options.only) scan(file, original);
+			if (!options.only) scan(file, (nativeResult && 'generated' in nativeResult && nativeResult.imports) || importsIn(original));
 			const written = prefix + repairGenerated(original);
 			/* A relative reference directive (Vue's global types, a user's
 			 * `/// <reference path="./globals.d.ts" />`) resolves from the
@@ -497,6 +556,11 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 				: 'off (a file changes how later files parse)';
 		console.error(`native codegen ${state}: ${generatedNatively} of ${Object.keys(maps).length} files`);
 		for (const [reason, count] of declined) console.error(`  left to JavaScript, ${count}: ${reason}`);
+		console.error(
+			reader
+				? `native import reader on: ${imports.size} of ${scanned.size} source files`
+				: `native import reader off (no binary, or a TypeScript it doesn't reproduce: ${typescriptFile})`
+		);
 	}
 
 	return { core, extensions, maps, packageImports, references, ts, unparsed };

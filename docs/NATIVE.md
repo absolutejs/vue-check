@@ -98,6 +98,36 @@ The port stands behind a result or it doesn't return one. Two cases go back to t
   parser throw halfway, changes how every file after it in the same process is parsed. Only the
   original, run in the original order, reproduces that.
 
+## The import reader
+
+vue-tsc checks every Vue file its program reaches by import, listed in the tsconfig or not. To find
+them, vue-check reads the imports of every source file and of every generated file and follows the
+ones that lead outside the project's own list. Reading the imports is TypeScript's
+`preProcessFile`: a walk over the scanner's tokens, with no parser.
+
+`native/src/imports` is a port of `preProcessFile` and of the scanner under it, as far as
+`preProcessFile` drives it. The binary reads the files across the machine's cores
+(`vue-check-codegen imports`), and reports the imports of the code it generates along with the code.
+Which file an import means is still decided by the project's own TypeScript (`resolveModuleName`),
+as is the tsconfig and its list of files: those define the program, and stay the project's.
+
+It is used for a TypeScript in which everything ported is, text for text, what was ported:
+`src/native.ts` hashes the source of `preProcessFile`, `createScanner` and the functions and tables
+those two read, out of the project's `typescript.js`, and compares it with the hashes of the versions
+the oracle below has passed on. Those are TypeScript 5.7.3 to 6.0.3 (two hashes: the source is the
+same within 5.x and within 6.0) and the 6.0.3 bridge build that ships TypeScript 7's compiler behind
+the JavaScript API. With any other TypeScript, and for any file the port declines, vue-check asks the
+project's `preProcessFile`. The port declines a file that isn't UTF-8 and an import whose name holds
+half a surrogate pair (`'\uD800'`), which a JavaScript string can hold and a Rust one can't.
+
+TypeScript 7 itself has no `preProcessFile`: its package is the native compiler, with no JavaScript
+API. Vue's codegen needs that API, so a project checked by vue-tsc has a TypeScript 5 or 6 (or the
+bridge) for it, and that is the one read here.
+
+`preProcessFile` is wrong in consistent ways, because it has no parser (the text of a regular
+expression is scanned as code, for one), and the port is wrong in the same ways: what matters is
+that both list the same names in the same order.
+
 ## Proving each layer
 
 The folder diff is the bar, and it only says *that* two outputs differ. So each layer is also compared
@@ -118,6 +148,13 @@ Real projects contain almost no malformed templates, so `stress.ts` generates th
 generator: malformed tags, every kind of attribute and directive, entities, comments and CDATA,
 raw-text blocks, characters outside ASCII, and files cut off at any point, so that every state of the
 tokenizer is also an end state.
+
+The import reader has its own oracle: `native/oracle/run-imports.sh <dir> <results-dir>` compares it
+with the project's `preProcessFile` on every script file under a folder, `node_modules` included
+(packages hold syntax a project's own code doesn't), and `stress-imports.ts` generates files real
+projects don't contain: real files cut off at any point, with the scanner's awkward tokens (escapes,
+unterminated strings and templates, numeric literals, merge-conflict markers, shebangs) put in at
+random places.
 
 The last layer is the whole file. The oracle records the code Volar hands TypeScript for each file
 and its mappings (source offsets, generated offsets, lengths, and which errors each range reports);
@@ -143,6 +180,12 @@ are the same projects with `VUE_CHECK_NATIVE=0`, measured before.
 | slidev | 121 | 119 | 1.55 s · 252 MB | 0.94 s · 211 MB | 1.71 s | 1.07 s |
 | vitepress-client | 66 | 66 | 1.47 s · 234 MB | 0.59 s · 171 MB | 2.05 s | 1.00 s |
 | vitepress-docs | 4 | 4 | 0.49 s · 151 MB | 0.44 s · 126 MB | 0.73 s | 0.68 s |
+
+The import reader lists the same imports as `preProcessFile` on every script file of six projects and
+Vue's conformance suite, `node_modules` included (about 326,000 files, 1.8 GB, on TypeScript 5.9.3,
+6.0.3 and the bridge), and on generated files (20,000 to 60,000 per version) on TypeScript 5.7.3,
+5.8.2, 5.8.3, 5.9.2, 5.9.3, 6.0.2 and 6.0.3. It declined under 1% of the generated files (half a
+surrogate pair), and no real one.
 
 The script codegen differs by Vue version (3.3, 3.4, 3.5 and 3.6 each change the code written). The
 whole-file comparison is run at each (`TARGET=3.4 native/oracle/run.sh …`), on the conformance

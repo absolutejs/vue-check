@@ -11,6 +11,7 @@
 
 mod codegen;
 mod dump;
+mod imports;
 mod js;
 mod script;
 mod sfc;
@@ -517,6 +518,9 @@ fn generate_one(input: &GenerateInput) -> Value {
                     "mappings": mappings,
                     "text": generated.text,
                 },
+                // What the generated code imports; absent when the port
+                // can't say (see `imports`).
+                "imports": imports::imported_files(&generated.text),
             })
         }
         Err(declined) => json!({
@@ -527,9 +531,9 @@ fn generate_one(input: &GenerateInput) -> Value {
     }
 }
 
-/// Files are generated independently of each other, so they are shared out
-/// over the machine's cores; the lines come back in the order they came in.
-fn run_generate() -> io::Result<()> {
+/// One line of output for each line of input, in the same order, with the
+/// lines shared out over the machine's cores: each is independent of the rest.
+fn run_in_parallel(one: impl Fn(&str) -> io::Result<String> + Sync) -> io::Result<()> {
     let lines: Vec<String> = io::stdin()
         .lock()
         .lines()
@@ -540,21 +544,18 @@ fn run_generate() -> io::Result<()> {
         .min(lines.len())
         .max(1);
     let next = AtomicUsize::new(0);
-    let generate_some = || -> io::Result<Vec<(usize, String)>> {
+    let work = || -> io::Result<Vec<(usize, String)>> {
         let mut done = Vec::new();
         loop {
             let index = next.fetch_add(1, Ordering::Relaxed);
             let Some(line) = lines.get(index) else {
                 return Ok(done);
             };
-            let input: GenerateInput = serde_json::from_str(line)?;
-            done.push((index, serde_json::to_string(&generate_one(&input))?));
+            done.push((index, one(line)?));
         }
     };
     let mut outputs: Vec<(usize, String)> = std::thread::scope(|scope| {
-        let handles: Vec<_> = (0..workers)
-            .map(|_| scope.spawn(generate_some))
-            .collect();
+        let handles: Vec<_> = (0..workers).map(|_| scope.spawn(work)).collect();
         let mut outputs = Vec::with_capacity(lines.len());
         for handle in handles {
             let done = handle
@@ -571,6 +572,43 @@ fn run_generate() -> io::Result<()> {
         stdout.write_all(b"\n")?;
     }
     stdout.flush()
+}
+
+fn run_generate() -> io::Result<()> {
+    run_in_parallel(|line| {
+        let input: GenerateInput = serde_json::from_str(line)?;
+        Ok(serde_json::to_string(&generate_one(&input))?)
+    })
+}
+
+/// A file to read the imports of: its text, or where it is.
+#[derive(Deserialize)]
+struct ImportsInput {
+    file: String,
+    text: Option<String>,
+}
+
+/// The imports of each file, or why the port leaves the file alone.
+fn run_imports() -> io::Result<()> {
+    run_in_parallel(|line| {
+        let input: ImportsInput = serde_json::from_str(line)?;
+        let read = match input.text {
+            Some(text) => Ok(text),
+            None => std::fs::read(&input.file)
+                .map_err(|error| error.to_string())
+                .and_then(|bytes| String::from_utf8(bytes).map_err(|_| "it isn't UTF-8".to_owned())),
+        };
+        let text = read.as_deref().map_err(Clone::clone);
+        let output = match text.map(imports::imported_files) {
+            Ok(Some(imports)) => json!({ "file": input.file, "imports": imports }),
+            Ok(None) => json!({
+                "file": input.file,
+                "unsupported": "an import's name has half a surrogate pair",
+            }),
+            Err(reason) => json!({ "file": input.file, "unsupported": reason }),
+        };
+        Ok(serde_json::to_string(&output)?)
+    })
 }
 
 fn run_interpolate() -> io::Result<()> {
@@ -602,13 +640,14 @@ fn main() -> ExitCode {
         Some("interpolate") => run_interpolate(),
         Some("template") => run_template(),
         Some("generate") => run_generate(),
+        Some("imports") => run_imports(),
         Some("--version") => {
             println!("vue-check-codegen {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         _ => {
             eprintln!(
-                "usage: vue-check-codegen <parse|interpolate|template|generate> < input.jsonl > output.jsonl"
+                "usage: vue-check-codegen <parse|interpolate|template|generate|imports> < input.jsonl > output.jsonl"
             );
             return ExitCode::from(2);
         }
