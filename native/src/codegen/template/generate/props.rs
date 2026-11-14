@@ -6,6 +6,7 @@ use super::{
 };
 use crate::codegen::template::interpolation::generate_identifier;
 use crate::codegen::{Features, NEW_LINE, Source, generate_unicode, is_identifier};
+use super::ModelTag;
 use crate::js;
 use crate::template::ast::{
     Attribute, ConstantType, Directive, Element, ElementType, Prop, SimpleExpression, Text,
@@ -88,22 +89,44 @@ impl<'a> Generator<'a> {
             && (node.tag_type == ElementType::Slot || !self.is_html_attribute(name))
     }
 
-    /// `getModelPropName`, for the default `experimentalModelPropName`: which
-    /// prop `v-model` binds. `None` is the original's `undefined`.
-    fn model_prop_name(node: &Element) -> Option<&'static str> {
-        let has_text_type = || {
-            node.props.iter().any(|prop| {
-                matches!(prop, Prop::Attribute(attribute)
-                    if attribute.name == "type"
-                        && attribute.value.as_ref().is_some_and(|value| value.content == "text"))
-            })
+    /// `getModelPropName`: which prop `v-model` binds on this element, by
+    /// `experimentalModelPropName`. `None` is the original's `undefined`.
+    fn model_prop_name(&self, node: &Element) -> Option<&'a str> {
+        let names = &self.options.compiler.model_prop_names;
+        let is_tag = |tag: &str| node.tag == tag || node.tag == js::hyphenate(tag);
+        // The first attribute of that name, with that value.
+        let has_attribute = |(name, value): &(String, String)| {
+            node.props
+                .iter()
+                .find_map(|prop| match prop {
+                    Prop::Attribute(attribute) if attribute.name == *name => Some(attribute),
+                    _ => None,
+                })
+                .and_then(|attribute| attribute.value.as_ref())
+                .is_some_and(|text| text.content == *value)
         };
-        match node.tag.as_str() {
-            "input" if has_text_type() => Some("value"),
-            "input" => None,
-            "textarea" | "select" => Some("value"),
-            _ => Some("modelValue"),
+        let found = |model_name: &'a str| (!model_name.is_empty()).then_some(model_name);
+        // A tag with the attributes one asks for comes first.
+        for (model_name, tags) in names {
+            for (tag, when) in tags {
+                if let ModelTag::WithAttributes(lists) = when
+                    && is_tag(tag)
+                    && lists
+                        .iter()
+                        .any(|attributes: &Vec<(String, String)>| attributes.iter().all(has_attribute))
+                {
+                    return found(model_name);
+                }
+            }
         }
+        for (model_name, tags) in names {
+            for (tag, when) in tags {
+                if *when == ModelTag::Always && is_tag(tag) {
+                    return found(model_name);
+                }
+            }
+        }
+        Some("modelValue")
     }
 
     /// `generateElementProps`.
@@ -185,7 +208,7 @@ impl<'a> Generator<'a> {
                             Some(arg.content.as_str())
                         }
                         Some(arg) => Some(self.source(&arg.loc)),
-                        None => Self::model_prop_name(node),
+                        None => self.model_prop_name(node),
                     };
                     if prop_name.is_none_or(|name| self.is_data_attribute(name)) {
                         if let Some(exp) = &directive.exp

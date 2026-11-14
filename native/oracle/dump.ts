@@ -2,7 +2,7 @@
 import { appendFileSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative } from 'node:path';
-import { LANGUAGE_CORES, portedOptions } from '../../src/native';
+import { LANGUAGE_CORES, modelPropNames, portedOptions } from '../../src/native';
 
 /*
  * The oracle for the native template parser: what the project's own
@@ -332,6 +332,7 @@ if (ported) {
 				fallthroughAttributes: compiler.fallthroughAttributes,
 				fallthroughComponentNames: compiler.fallthroughComponentNames,
 				htmlAttributes: compiler.htmlAttributes,
+				modelPropNames: modelPropNames(compiler.experimentalModelPropName),
 				inferComponentDollarEl: compiler.inferComponentDollarEl,
 				inferComponentDollarRefs: compiler.inferComponentDollarRefs,
 				inferTemplateDollarAttrs: compiler.inferTemplateDollarAttrs,

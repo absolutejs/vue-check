@@ -208,7 +208,8 @@ const PORTED_FLAGS = new Set([
 	'inferTemplateDollarSlots',
 	'fallthroughAttributes',
 	'checkRequiredFallthroughAttributes',
-	'jsxSlots'
+	'jsxSlots',
+	'resolveStyleImports'
 ]);
 const isNames = (value: unknown): value is string[] => Array.isArray(value) && value.every((name) => typeof name === 'string');
 /** Each macro or composable, with the list of names it goes by. */
@@ -216,6 +217,38 @@ const isNamesOf =
 	(known: string[]) =>
 	(value: unknown) =>
 		typeof value === 'object' && value !== null && !Array.isArray(value) && Object.entries(value).every(([name, names]) => known.includes(name) && isNames(names));
+/**
+ * `experimentalModelPropName` for the binary: each prop with each tag, in
+ * the order JavaScript walks them, and when the tag takes the prop: `true`,
+ * the lists of attributes that ask for it, or `false` for a value the codegen
+ * reads as neither. Null for a value the port doesn't read as the codegen
+ * does (an attribute that isn't compared with a string).
+ */
+export const modelPropNames = (value: unknown) => {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+	const names: [string, [string, boolean | [string, string][][]][]][] = [];
+	for (const [name, tags] of Object.entries(value)) {
+		if (typeof tags !== 'object' || tags === null || Array.isArray(tags)) return null;
+		const entries: [string, boolean | [string, string][][]][] = [];
+		for (const [tag, when] of Object.entries(tags)) {
+			if (typeof when !== 'object') {
+				entries.push([tag, when === true]);
+				continue;
+			}
+			const lists: [string, string][][] = [];
+			for (const attributes of Array.isArray(when) ? when : [when]) {
+				if (typeof attributes !== 'object' || attributes === null || Array.isArray(attributes)) return null;
+				const list = Object.entries(attributes);
+				if (!list.every((entry): entry is [string, string] => typeof entry[1] === 'string')) return null;
+				lists.push(list);
+			}
+			entries.push([tag, lists]);
+		}
+		names.push([name, entries]);
+	}
+
+	return names;
+};
 /* The other options the port reads, each with the values it reads them as. */
 const PORTED_OPTIONS: Record<string, (value: unknown) => boolean> = {
 	composables: isNamesOf(['useAttrs', 'useCssModule', 'useSlots', 'useTemplateRef']),
@@ -251,6 +284,12 @@ export const portedOptions = (core: unknown, ts: unknown, vueOptions: unknown): 
 		if (FREE_OPTIONS.has(key)) continue;
 		const value = project[key];
 		if (JSON.stringify(value) === JSON.stringify(defaults[key])) continue;
+		if (key === 'experimentalModelPropName') {
+			const names = modelPropNames(value);
+			if (!names) return { changed: key };
+			options[key] = names;
+			continue;
+		}
 		const ported = PORTED_FLAGS.has(key) ? typeof value === 'boolean' : (PORTED_OPTIONS[key]?.(value) ?? false);
 		if (!ported) return { changed: key };
 		options[key] = value;

@@ -55,6 +55,20 @@ pub struct CompilerFlags {
     /// original matches with picomatch.
     pub data_attributes: Vec<String>,
     pub html_attributes: Vec<String>,
+    /// `experimentalModelPropName`: for each prop `v-model` can bind, the
+    /// tags it binds it on, in the original's order.
+    pub model_prop_names: Vec<(String, Vec<(String, ModelTag)>)>,
+}
+
+/// When a tag takes a prop for `v-model`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ModelTag {
+    /// Always.
+    Always,
+    /// When it has every attribute of one of these lists, with that value.
+    WithAttributes(Vec<Vec<(String, String)>>),
+    /// A value the original reads as neither.
+    Never,
 }
 
 impl Default for CompilerFlags {
@@ -83,6 +97,26 @@ impl Default for CompilerFlags {
                 .to_vec(),
             data_attributes: Vec::new(),
             html_attributes: vec!["aria-*".to_owned()],
+            model_prop_names: vec![
+                (
+                    String::new(),
+                    vec![("input".to_owned(), ModelTag::Always)],
+                ),
+                (
+                    "value".to_owned(),
+                    vec![
+                        (
+                            "input".to_owned(),
+                            ModelTag::WithAttributes(vec![vec![(
+                                "type".to_owned(),
+                                "text".to_owned(),
+                            )]]),
+                        ),
+                        ("textarea".to_owned(), ModelTag::Always),
+                        ("select".to_owned(), ModelTag::Always),
+                    ],
+                ),
+            ],
         }
     }
 }

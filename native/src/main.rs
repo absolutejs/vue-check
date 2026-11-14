@@ -291,6 +291,8 @@ struct RecordedCompiler {
     fallthrough_attributes: bool,
     fallthrough_component_names: Vec<String>,
     html_attributes: Vec<String>,
+    /// `experimentalModelPropName`, as the gate gives it (`ModelPropNames`).
+    model_prop_names: Option<ModelPropNames>,
     infer_component_dollar_el: bool,
     infer_component_dollar_refs: bool,
     infer_template_dollar_attrs: bool,
@@ -338,6 +340,10 @@ fn replay_template(call: &TemplateCall) -> Value {
         fallthrough_component_names: recorded.fallthrough_component_names.clone(),
         data_attributes: recorded.data_attributes.clone(),
         html_attributes: recorded.html_attributes.clone(),
+        model_prop_names: recorded.model_prop_names.as_ref().map_or_else(
+            || CompilerFlags::default().model_prop_names,
+            model_prop_names,
+        ),
     };
     let (imported_components, setup_refs, setup_consts) = (
         set(&call.imported_components),
@@ -508,6 +514,46 @@ struct GenerateOptions {
     composables: Option<Names>,
     resolve_style_class_names: Option<StyleClassNames>,
     strict_css_modules: Option<bool>,
+    resolve_style_imports: Option<bool>,
+    experimental_model_prop_name: Option<ModelPropNames>,
+}
+
+/// `experimentalModelPropName` in the original's order: each prop, with each
+/// tag and when it takes the prop: `true`, the attribute lists that ask for
+/// it, or `false` for a value the original reads as neither.
+type ModelPropNames = Vec<(String, Vec<(String, ModelTagInput)>)>;
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ModelTagInput {
+    Flag(bool),
+    WithAttributes(Vec<Vec<(String, String)>>),
+}
+
+fn model_prop_names(
+    given: &ModelPropNames,
+) -> Vec<(String, Vec<(String, codegen::template::generate::ModelTag)>)> {
+    use codegen::template::generate::ModelTag;
+
+    given
+        .iter()
+        .map(|(name, tags)| {
+            let tags = tags
+                .iter()
+                .map(|(tag, when)| {
+                    let when = match when {
+                        ModelTagInput::Flag(true) => ModelTag::Always,
+                        ModelTagInput::Flag(false) => ModelTag::Never,
+                        ModelTagInput::WithAttributes(lists) => {
+                            ModelTag::WithAttributes(lists.clone())
+                        }
+                    };
+                    (tag.clone(), when)
+                })
+                .collect();
+            (name.clone(), tags)
+        })
+        .collect()
 }
 
 /// A list of names each macro or composable goes by, as the project has it.
@@ -581,6 +627,9 @@ impl GenerateOptions {
         if let Some(lib) = &self.lib {
             flags.lib.clone_from(lib);
         }
+        if let Some(given) = &self.experimental_model_prop_name {
+            flags.model_prop_names = model_prop_names(given);
+        }
         let analysis = &mut options.analysis;
         for given in [&self.macros, &self.composables].into_iter().flatten() {
             names(&mut analysis.define_props, &given.define_props);
@@ -597,6 +646,7 @@ impl GenerateOptions {
         }
         set(&mut options.jsx_slots, self.jsx_slots);
         set(&mut options.strict_css_modules, self.strict_css_modules);
+        set(&mut options.resolve_style_imports, self.resolve_style_imports);
         match &self.resolve_style_class_names {
             Some(StyleClassNames::All(true)) => options.resolve_class_names = ResolveClassNames::All,
             Some(StyleClassNames::All(false)) => {

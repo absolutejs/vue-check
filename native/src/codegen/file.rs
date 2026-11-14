@@ -273,6 +273,7 @@ pub struct FileOptions {
     pub analysis: script::ScriptOptions,
     pub jsx_slots: bool,
     pub resolve_class_names: ResolveClassNames,
+    pub resolve_style_imports: bool,
     pub strict_css_modules: bool,
     /// `optionsWrapper`: what an options object is wrapped in, if anything.
     pub options_wrapper: Option<(String, String)>,
@@ -286,6 +287,7 @@ impl Default for FileOptions {
             analysis: script::ScriptOptions::default(),
             jsx_slots: false,
             resolve_class_names: ResolveClassNames::Scoped,
+            resolve_style_imports: false,
             strict_css_modules: false,
             options_wrapper: Some((
                 "(await import('vue')).defineComponent(".to_owned(),
@@ -315,6 +317,7 @@ pub fn generate_file(
         analysis,
         jsx_slots,
         resolve_class_names,
+        resolve_style_imports,
         strict_css_modules,
         options_wrapper,
     } = options;
@@ -476,6 +479,11 @@ pub fn generate_file(
                 .map(|module| (module.text.clone(), module.position)),
             bindings: scan.bindings,
             class_names: scan.class_names,
+            imports: scan.imports,
+            src: match &block.src {
+                Some(AttrOrTrue::Attr(src)) => Some((src.text.clone(), src.position)),
+                _ => None,
+            },
         });
     }
 
@@ -529,6 +537,7 @@ pub fn generate_file(
                 is_ts,
                 lib: &compiler.lib,
                 resolve_class_names: *resolve_class_names,
+                resolve_style_imports: *resolve_style_imports,
                 strict_css_modules: *strict_css_modules,
                 setup_refs: &derived.setup_refs,
                 setup_consts: &derived.setup_consts,

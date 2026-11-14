@@ -20,6 +20,10 @@ pub struct Style {
     pub module: Option<(String, usize)>,
     pub bindings: Vec<StyleText>,
     pub class_names: Vec<StyleText>,
+    /// What its `@import`s name.
+    pub imports: Vec<StyleText>,
+    /// `<style src="...">`: the file, and where it is named.
+    pub src: Option<(String, usize)>,
 }
 
 /// `resolveStyleClassNames`: which styles' class names are checked.
@@ -37,6 +41,9 @@ pub struct StyleOptions<'a> {
     pub is_ts: bool,
     pub lib: &'a str,
     pub resolve_class_names: ResolveClassNames,
+    /// `resolveStyleImports`: the classes of the files a style imports count
+    /// as its own.
+    pub resolve_style_imports: bool,
     pub strict_css_modules: bool,
     pub setup_refs: &'a HashSet<String>,
     pub setup_consts: &'a HashSet<String>,
@@ -147,6 +154,35 @@ impl Generator<'_> {
         self.text(" }");
     }
 
+    /// `generateStyleImports`: the default export of each file a style is
+    /// from or imports.
+    fn style_imports(&mut self, source: Source, style: &Style) {
+        if let Some((file, offset)) = &style.src {
+            self.text(format!("{NEW_LINE} & typeof import("));
+            let boundary = self.boundary(
+                Source::Main,
+                *offset,
+                offset + file.len(),
+                NAVIGATION_AND_VERIFICATION,
+            );
+            self.text("'");
+            self.mapped(file.clone(), Source::Main, *offset, boundary.features);
+            self.text("'");
+            self.out.push(boundary.end());
+            self.text(").default");
+        }
+        for import in &style.imports {
+            self.text(format!("{NEW_LINE} & typeof import('"));
+            self.mapped(
+                import.text.clone(),
+                source,
+                import.offset,
+                NAVIGATION_AND_VERIFICATION,
+            );
+            self.text("').default");
+        }
+    }
+
     /// `generateStyleScopedClasses`: the type of the classes a template can
     /// use.
     fn scoped_classes(&mut self) {
@@ -174,6 +210,9 @@ impl Generator<'_> {
             generator.text("{}");
             for (index, style) in &scoped {
                 let source = Source::Style(*index);
+                if options.resolve_style_imports {
+                    generator.style_imports(source, style);
+                }
                 for class_name in &style.class_names {
                     if visited.insert(class_name.text.as_str()) {
                         generator.class_property(source, class_name, "boolean");
@@ -282,6 +321,9 @@ impl Generator<'_> {
                     generator.text("Record<string, string> & ");
                 }
                 generator.text("__VLS_PrettifyGlobal<{}");
+                if options.resolve_style_imports {
+                    generator.style_imports(Source::Style(*index), style);
+                }
                 for class_name in &style.class_names {
                     generator.class_property(Source::Style(*index), class_name, "string");
                 }

@@ -13,9 +13,11 @@ pub struct StyleText {
     pub offset: usize,
 }
 
-/// `compileSFCStyle`'s result, without its imports (see `scan`).
+/// `compileSFCStyle`'s result.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StyleScan {
+    /// What `@import` names.
+    pub imports: Vec<StyleText>,
     /// The expressions of `v-bind(...)`.
     pub bindings: Vec<StyleText>,
     /// The class names of the selectors, each with its dot.
@@ -161,10 +163,10 @@ fn lex_binding(css: &str, start: usize) -> Option<usize> {
 }
 
 /// `trimQuotes(text, offset, false)`: an expression in quotes, without them.
-fn trim_quotes(text: &str, offset: usize) -> StyleText {
+fn trim_quotes(text: &str, offset: usize, trim: bool) -> StyleText {
     let mut start = 0;
     let mut end = text.len();
-    if text.contains('"') || text.contains('\'') {
+    if trim || text.contains('"') || text.contains('\'') {
         let trimmed = js::trim_start(text);
         start = text.len() - trimmed.len();
         end = start + js::trim_end(trimmed).len();
@@ -223,11 +225,84 @@ pub fn scan(css: &str) -> StyleScan {
             result.unsupported =
                 Some("a v-bind() in a style has a comment with a character outside ASCII in it");
         }
-        result.bindings.push(trim_quotes(text, start));
+        result.bindings.push(trim_quotes(text, start, false));
     }
 
     result.class_names = class_names(&blank_fragments(&without_comments));
+    result.imports = imports(css);
     result
+}
+
+fn is_line_terminator(char: char) -> bool {
+    matches!(char, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
+/// Where `text` ends, when it is on one line and stops at `end`, followed by
+/// `after` if one is given: the regular expression's lazy `.*?`.
+fn lazy_until(css: &str, from: usize, end: char, after: Option<char>) -> Option<usize> {
+    let rest = css.get(from..)?;
+    let mut chars = rest.char_indices().peekable();
+    while let Some((index, char)) = chars.next() {
+        let next = chars.peek().map(|(_, next)| *next);
+        if char == end && after.is_none_or(|after| next == Some(after)) {
+            return Some(from + index);
+        }
+        if is_line_terminator(char) {
+            return None;
+        }
+    }
+    None
+}
+
+/// `parseCssImports`, with `cssImportRE`:
+/// `/(?<=@import\s+url\()(["']?).*?\1(?=\))|(?<=@import\b\s*)(["']).*?\2/g`.
+/// What an `@import` names: inside `url(...)`, or the string after it.
+fn imports(css: &str) -> Vec<StyleText> {
+    let mut found = Vec::new();
+    let mut position = 0;
+    while position <= css.len() {
+        let Some(before) = css.get(..position) else {
+            // Inside a character.
+            position += 1;
+            continue;
+        };
+        let quote = css
+            .get(position..)
+            .and_then(|rest| rest.chars().next())
+            .filter(|char| matches!(char, '"' | '\''));
+        // After `@import`, whitespace and `url(`: to the `)`, or to the quote
+        // before it when it starts with one.
+        let in_url = before.strip_suffix("url(").is_some_and(|before| {
+            let trimmed = js::trim_end(before);
+            trimmed.len() < before.len() && trimmed.ends_with("@import")
+        });
+        let end = if in_url {
+            quote
+                .and_then(|quote| lazy_until(css, position + 1, quote, Some(')')))
+                .map(|closing| closing + 1)
+                .or_else(|| lazy_until(css, position, ')', None))
+        } else {
+            None
+        };
+        // After `@import` and any whitespace: a string.
+        let end = end.or_else(|| {
+            let quote = quote?;
+            js::trim_end(before)
+                .ends_with("@import")
+                .then(|| lazy_until(css, position + 1, quote, None))
+                .flatten()
+                .map(|closing| closing + 1)
+        });
+        match end {
+            Some(end) => {
+                found.push(trim_quotes(css.get(position..end).unwrap_or(""), position, true));
+                // An empty match is passed by one character.
+                position = if end == position { end + 1 } else { end };
+            }
+            None => position += 1,
+        }
+    }
+    found
 }
 
 #[cfg(test)]
