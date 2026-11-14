@@ -2,6 +2,7 @@
 import { appendFileSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative } from 'node:path';
+import { portedOptions } from '../../src/native';
 
 /*
  * The oracle for the native template parser: what the project's own
@@ -366,8 +367,22 @@ if (ported) {
 /* The Vue version the code is generated for: vue-tsc reads it from the
  * project's installed vue; TARGET sets it here (99, the default, is "latest"). */
 const target = process.env.TARGET ? Number(process.env.TARGET) : undefined;
-/* The options of a project that sets none, as vue-tsc resolves them. */
-const vueOptions = core && analysis ? new core.CompilerOptionsResolver(analysis.ts).build(core.getDefaultCompilerOptions(target)) : null;
+/* The options of a project that sets none, as vue-tsc resolves them; or of
+ * one whose tsconfig sets VUE_OPTIONS (JSON, a `vueCompilerOptions`). */
+const vueOptions = (() => {
+	if (!core || !analysis) return null;
+	const resolver = new core.CompilerOptionsResolver(analysis.ts);
+	if (process.env.VUE_OPTIONS) {
+		resolver.addConfig({ target: target ?? 99, ...JSON.parse(process.env.VUE_OPTIONS) }, root ?? '.');
+
+		return resolver.build();
+	}
+
+	return resolver.build(core.getDefaultCompilerOptions(target));
+})();
+/* The options among them that the port is given (src/native.ts). */
+const given = vueOptions && analysis ? portedOptions(core, analysis.ts, vueOptions) : null;
+if (given && 'changed' in given) throw new Error(`VUE_OPTIONS sets ${given.changed}, which the port doesn't read`);
 const languagePlugin = (() => {
 	if (!core || !analysis) return null;
 	const { ts } = analysis;
@@ -441,7 +456,7 @@ for (const [index, path] of paths.entries()) {
 	if (index < from) continue;
 	const file = relative(root, path);
 	const source = readFileSync(path, 'utf8');
-	files.push(JSON.stringify({ file, target: vueOptions?.target ?? null, text: source, typesPath: typesPathOf(path) }));
+	files.push(JSON.stringify({ file, options: given && 'options' in given ? given.options : {}, target: vueOptions?.target ?? null, text: source, typesPath: typesPathOf(path) }));
 	const record: Record<string, unknown> = { file, versions };
 	let poisoned = false;
 	try {

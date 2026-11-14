@@ -6,6 +6,7 @@
 # For a package in a monorepo, set WORKSPACE=<monorepo root>; for a copy that
 # borrows another checkout's node_modules, MODULES=<path> (as bench/run-in-docker.sh).
 # TARGET=<vue version> generates for that version of Vue (default: the latest).
+# VUE_OPTIONS=<json> generates with those vueCompilerOptions (default: none set).
 set -euo pipefail
 project=$(realpath "$1"); out=$(realpath -m "$2")
 # Docker would create a missing folder itself, owned by root.
@@ -21,7 +22,7 @@ modules=()
 if [ -n "${MODULES:-}" ]; then
 	modules=(-v "$(realpath "$MODULES")":/project/node_modules:ro)
 fi
-docker run --rm --network none --memory 4g --user "$(id -u):$(id -g)" -e HOME=/tmp -e TARGET="${TARGET:-}" \
+docker run --rm --network none --memory 4g --user "$(id -u):$(id -g)" -e HOME=/tmp -e TARGET="${TARGET:-}" -e VUE_OPTIONS="${VUE_OPTIONS:-}" \
 	-v "$mount":/project:ro "${modules[@]}" -v "$tool":/tool:ro -v "$out":/out \
 	-v "$bun_binary":/usr/local/bin/bun:ro -w "$inside" node:22-bookworm \
 	bun /tool/native/oracle/dump.ts "$inside" /out

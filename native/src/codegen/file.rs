@@ -264,7 +264,7 @@ fn derive(
     derived
 }
 
-/// Generates a file's code with the default compiler options.
+/// Generates a file's code, with the project's compiler options.
 /// `file_name` is the file's base name, and `types_path` the folder of
 /// language-core's type declarations as the file's `/// <reference>` lines
 /// name it; `target` is the version of Vue the code is for.
@@ -277,6 +277,8 @@ pub fn generate_file(
     file_name: &str,
     types_path: &str,
     target: f64,
+    compiler: &CompilerFlags,
+    jsx_slots: bool,
 ) -> Result<GeneratedFile, Declined> {
     let sfc = parse_sfc(source);
     if sfc.parsed.poisons_later_parses {
@@ -328,7 +330,6 @@ pub fn generate_file(
     };
     let lang = compute_lang(script_lang, setup_lang);
     let is_ts = matches!(lang, "ts" | "tsx");
-    let compiler = CompilerFlags::default();
     let analysis = script::ScriptOptions::default();
 
     // The script blocks' analysis.
@@ -464,7 +465,7 @@ pub fn generate_file(
                 is_html: !matches!(block.lang.as_deref(), Some("md")),
                 is_ts,
                 is_vapor,
-                compiler: &compiler,
+                compiler,
                 imported_components: &derived.imported_components,
                 setup_refs: &derived.setup_refs,
                 setup_consts: &derived.setup_consts,
@@ -611,7 +612,7 @@ pub fn generate_file(
             infer_component_dollar_el: compiler.infer_component_dollar_el,
             infer_template_dollar_attrs: compiler.infer_template_dollar_attrs,
             infer_template_dollar_slots: compiler.infer_template_dollar_slots,
-            jsx_slots: false,
+            jsx_slots,
             options_wrapper: Some(("(await import('vue')).defineComponent(", ")")),
             types_path,
             is_ts,

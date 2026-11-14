@@ -7,7 +7,7 @@ import { dirname, isAbsolute, join, relative } from 'node:path';
 /*
  * The native codegen (native/, see docs/NATIVE.md): a port of one exact
  * version of Vue's codegen, used only for a project that would run that
- * version with its default options. Anything else, and any file the port
+ * version with options the port reads. Anything else, and any file the port
  * declines, stays with the project's own JavaScript codegen, so the output is
  * the same either way.
  */
@@ -188,24 +188,55 @@ const portedPackages = (coreRequire: NodeJS.Require) => {
 	}
 };
 
-/** The first of the project's options that isn't the default the port was written for. */
-const changedOption = (core: Core, ts: unknown, vueOptions: VueOptions) => {
+/* The options the port reads, which a project may set: the checks strict
+ * templates turn on, what a template's $attrs, $el, $refs and $slots are
+ * typed from, and which attributes fall through. */
+const PORTED_FLAGS = new Set([
+	'strictVModel',
+	'checkUnknownProps',
+	'checkUnknownEvents',
+	'checkUnknownDirectives',
+	'checkUnknownComponents',
+	'inferComponentDollarEl',
+	'inferComponentDollarRefs',
+	'inferTemplateDollarAttrs',
+	'inferTemplateDollarEl',
+	'inferTemplateDollarRefs',
+	'inferTemplateDollarSlots',
+	'fallthroughAttributes',
+	'checkRequiredFallthroughAttributes',
+	'jsxSlots'
+]);
+const isNames = (value: unknown): value is string[] => Array.isArray(value) && value.every((name) => typeof name === 'string');
+
+/**
+ * The project's options that aren't the defaults, for the binary; or
+ * `{ changed }`, the first one the port doesn't read (or reads only as a
+ * boolean, and the project gave something else).
+ */
+export const portedOptions = (core: unknown, ts: unknown, vueOptions: unknown): { changed: string } | { options: Record<string, unknown> } => {
+	const { CompilerOptionsResolver, getDefaultCompilerOptions } = core as Core;
+	const project = vueOptions as VueOptions;
 	if (
-		typeof core.getDefaultCompilerOptions !== 'function' ||
-		typeof core.CompilerOptionsResolver !== 'function' ||
-		typeof vueOptions.target !== 'number' ||
-		typeof vueOptions.typesRoot !== 'string'
+		typeof getDefaultCompilerOptions !== 'function' ||
+		typeof CompilerOptionsResolver !== 'function' ||
+		typeof project.target !== 'number' ||
+		typeof project.typesRoot !== 'string'
 	)
-		return 'vueCompilerOptions';
+		return { changed: 'vueCompilerOptions' };
 	/* What a project that sets no option gets. */
-	const defaults = new core.CompilerOptionsResolver(ts).build(core.getDefaultCompilerOptions(vueOptions.target, 'vue', false, vueOptions.typesRoot));
-	const keys = new Set([...Object.keys(defaults), ...Object.keys(vueOptions)]);
-	for (const key of keys) {
+	const defaults = new CompilerOptionsResolver(ts).build(getDefaultCompilerOptions(project.target, 'vue', false, project.typesRoot));
+	const options: Record<string, unknown> = {};
+	for (const key of new Set([...Object.keys(defaults), ...Object.keys(project)])) {
 		if (FREE_OPTIONS.has(key)) continue;
-		if (JSON.stringify(vueOptions[key]) !== JSON.stringify(defaults[key])) return key;
+		const value = project[key];
+		if (JSON.stringify(value) === JSON.stringify(defaults[key])) continue;
+		const ported = PORTED_FLAGS.has(key) ? typeof value === 'boolean' : key === 'fallthroughComponentNames' && isNames(value);
+		if (!ported) return { changed: key };
+		options[key] = value;
 	}
 
-	return null;
+	return { options };
 };
 
 /**
@@ -219,8 +250,8 @@ export const nativeCodegen = (core: unknown, ts: unknown, coreRequire: NodeJS.Re
 	const options = vueOptions as VueOptions;
 	const packages = portedPackages(coreRequire);
 	if (typeof packages === 'string') return { unavailable: `the project runs ${packages}` };
-	const changed = changedOption(core as Core, ts, options);
-	if (changed) return { unavailable: `the project sets the Vue compiler option ${changed}` };
+	const ported = portedOptions(core, ts, options);
+	if ('changed' in ported) return { unavailable: `the project sets the Vue compiler option ${ported.changed}` };
 	const typesRoot = options.typesRoot ?? '';
 	/* As the codegen's reference lines name the types folder (generateGlobalTypesReference). */
 	const typesPathOf = (file: string) => {
@@ -242,7 +273,7 @@ export const nativeCodegen = (core: unknown, ts: unknown, coreRequire: NodeJS.Re
 				}
 				const input = files
 					.slice(start, end)
-					.map(({ file, text }) => `${JSON.stringify({ file, target: options.target, text, typesPath: typesPathOf(file) })}\n`)
+					.map(({ file, text }) => `${JSON.stringify({ file, options: ported.options, target: options.target, text, typesPath: typesPathOf(file) })}\n`)
 					.join('');
 				const run = spawnSync(binary, ['generate'], { encoding: 'utf8', input, maxBuffer: Number.MAX_SAFE_INTEGER });
 				const lines = run.status === 0 ? run.stdout.split('\n').filter(Boolean) : [];

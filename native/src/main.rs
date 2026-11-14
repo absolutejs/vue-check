@@ -476,6 +476,62 @@ struct GenerateInput {
     types_path: Option<String>,
     /// The version of Vue the code is for (`vueCompilerOptions.target`).
     target: Option<f64>,
+    /// The compiler options the project sets, of those the port reads.
+    #[serde(default)]
+    options: GenerateOptions,
+}
+
+/// `vueCompilerOptions`, as resolved for the project: each option the port
+/// reads, absent when the project leaves it at its default.
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GenerateOptions {
+    strict_v_model: Option<bool>,
+    check_unknown_props: Option<bool>,
+    check_unknown_events: Option<bool>,
+    check_unknown_directives: Option<bool>,
+    check_unknown_components: Option<bool>,
+    infer_component_dollar_el: Option<bool>,
+    infer_component_dollar_refs: Option<bool>,
+    infer_template_dollar_attrs: Option<bool>,
+    infer_template_dollar_el: Option<bool>,
+    infer_template_dollar_refs: Option<bool>,
+    infer_template_dollar_slots: Option<bool>,
+    fallthrough_attributes: Option<bool>,
+    check_required_fallthrough_attributes: Option<bool>,
+    jsx_slots: Option<bool>,
+    fallthrough_component_names: Option<Vec<String>>,
+}
+
+impl GenerateOptions {
+    fn compiler_flags(&self) -> codegen::template::generate::CompilerFlags {
+        let mut flags = codegen::template::generate::CompilerFlags::default();
+        let set = |flag: &mut bool, value: Option<bool>| {
+            if let Some(value) = value {
+                *flag = value;
+            }
+        };
+        set(&mut flags.strict_v_model, self.strict_v_model);
+        set(&mut flags.check_unknown_props, self.check_unknown_props);
+        set(&mut flags.check_unknown_events, self.check_unknown_events);
+        set(&mut flags.check_unknown_directives, self.check_unknown_directives);
+        set(&mut flags.check_unknown_components, self.check_unknown_components);
+        set(&mut flags.infer_component_dollar_el, self.infer_component_dollar_el);
+        set(&mut flags.infer_component_dollar_refs, self.infer_component_dollar_refs);
+        set(&mut flags.infer_template_dollar_attrs, self.infer_template_dollar_attrs);
+        set(&mut flags.infer_template_dollar_el, self.infer_template_dollar_el);
+        set(&mut flags.infer_template_dollar_refs, self.infer_template_dollar_refs);
+        set(&mut flags.infer_template_dollar_slots, self.infer_template_dollar_slots);
+        set(&mut flags.fallthrough_attributes, self.fallthrough_attributes);
+        set(
+            &mut flags.check_required_fallthrough_attributes,
+            self.check_required_fallthrough_attributes,
+        );
+        if let Some(names) = &self.fallthrough_component_names {
+            flags.fallthrough_component_names.clone_from(names);
+        }
+        flags
+    }
 }
 
 /// The generated code of one file, in the shape the oracle records it.
@@ -488,6 +544,8 @@ fn generate_one(input: &GenerateInput) -> Value {
         name,
         input.types_path.as_deref().unwrap_or(""),
         input.target.unwrap_or(99.0),
+        &input.options.compiler_flags(),
+        input.options.jsx_slots.unwrap_or(false),
     ) {
         Ok(generated) => {
             let mappings: Vec<Value> = generated
