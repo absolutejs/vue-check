@@ -345,6 +345,22 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 			return null;
 		}
 	};
+	/* TypeScript resolves a name by the folder of the file that imports it
+	 * (and nothing else of that file), so each folder asks once per name. */
+	const resolutions = new Map<string, Map<string, string | undefined>>();
+	const resolveFrom = (name: string, file: string) => {
+		const folder = dirname(file);
+		let known = resolutions.get(folder);
+		if (!known) {
+			known = new Map();
+			resolutions.set(folder, known);
+		}
+		if (known.has(name)) return known.get(name);
+		const resolved = ts.resolveModuleName(name, file, parsed.options, ts.sys, resolutionCache).resolvedModule?.resolvedFileName;
+		known.set(name, resolved);
+
+		return resolved;
+	};
 	const scan = (file: string, text: string) => {
 		for (const { fileName: name } of ts.preProcessFile(text, true, true).importedFiles) {
 			if (isVue(name)) {
@@ -355,7 +371,7 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 				}
 				continue;
 			}
-			const resolved = ts.resolveModuleName(name, file, parsed.options, ts.sys, resolutionCache).resolvedModule?.resolvedFileName;
+			const resolved = resolveFrom(name, file);
 			if (!resolved || resolved.endsWith('.d.ts') || resolved.includes('/node_modules/') || scanned.has(resolved)) continue;
 			scanned.add(resolved);
 			scan(resolved, readFileSync(resolved, 'utf8'));
