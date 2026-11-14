@@ -631,12 +631,6 @@ pub fn generate_file(
         codes,
         tokens,
     );
-    // A rule that counts the errors it sees (under `@vue-expect-error`) is a
-    // function, which only Volar can evaluate.
-    let is_stateful = |code: &Code| matches!(code, Code::Mapped { features, .. } if features.verification == Verification::Stateful);
-    if script_codes.iter().any(is_stateful) {
-        return Err(Declined::file("a rule that only Volar can evaluate"));
-    }
     Ok(GeneratedFile {
         id: format!("script_{lang}"),
         language_id: language_id(lang),

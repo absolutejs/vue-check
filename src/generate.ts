@@ -291,9 +291,12 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 	/* The fixed rules a native mapping names, as the objects the codegen puts
 	 * in its mappings (serialize.ts finds them by identity). */
 	const features = (core as unknown as { codeFeatures: Record<string, ownVolar.CodeInformation> }).codeFeatures;
-	const dataOf: Record<0 | 1 | 'ts2353' | 'ts6133', ownVolar.CodeInformation | undefined> = {
+	const dataOf: Record<0 | 1 | 'stateful' | 'ts2353' | 'ts6133', ownVolar.CodeInformation | undefined> = {
 		0: { verification: false },
 		1: { verification: true },
+		/* A rule that isn't data: serialize.ts marks the file, and the CLI asks
+		 * Volar itself about it when the checker reports an error there. */
+		stateful: { verification: { shouldReport: () => false } },
 		ts2353: features?.doNotReportTs2353AndTs2561,
 		ts6133: features?.doNotReportTs6133
 	};

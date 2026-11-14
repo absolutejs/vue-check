@@ -62,6 +62,12 @@ pub(super) fn with_program<T>(text: &str, read: impl FnOnce(&Program<'_>) -> T) 
     // goes to the original.) Not oxc's "module or script, whichever parses"
     // mode: that one can return a tree with part of the text missing and no
     // error.
+    // In a script, JavaScript also takes `<!--` and `-->` as the start of a
+    // comment. TypeScript never does (`a<!--b` is `a < !--b`), so an
+    // expression with either goes to the original.
+    if text.contains("<!--") || text.contains("-->") {
+        return None;
+    }
     let parsed = Parser::new(&allocator, text, SourceType::ts().with_script(true))
         .with_options(options)
         .parse();

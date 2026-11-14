@@ -27,8 +27,10 @@ export type NativeMapping = {
 	generated: number[];
 	lengths: number[];
 	source: number[];
-	/** 0: no error is reported there; 1: all are; or one of Vue's fixed rules. */
-	verification: 0 | 1 | 'ts2353' | 'ts6133';
+	/** 0: no error is reported there; 1: all are; one of Vue's fixed rules; or
+	 * 'stateful', a rule that counts the errors it sees (under
+	 * `@vue-expect-error`), which is a function only Volar can evaluate. */
+	verification: 0 | 1 | 'stateful' | 'ts2353' | 'ts6133';
 };
 export type NativeResult =
 	| {
