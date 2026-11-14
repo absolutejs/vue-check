@@ -68,6 +68,21 @@ A project is one the port reproduces when:
 `VUE_CHECK_NATIVE_EXPLAIN=1` prints which codegen made each file and why.
 `bench/codegen-bar.sh <project> <tsconfig> <out>` runs both and compares the two folders.
 
+## How it ships
+
+The binary is built for six platforms (Linux, macOS and Windows, each on x64 and arm64) and published
+as one npm package per platform, `@absolutejs/vue-check-<platform>`, each holding only that binary.
+`@absolutejs/vue-check` names all six as optional dependencies at its own exact version, so an
+install fetches the one for the machine. `src/native.ts` looks for that package, and uses its binary
+only if its version is vue-check's own. With no binary (another platform, or an install without
+optional dependencies) vue-check runs the JavaScript codegen: the output is the same either way.
+
+The Linux binaries are static (musl), so one per architecture serves glibc distributions and Alpine.
+
+`.github/workflows/release.yml` builds the six binaries for a `v*` tag into a draft release, and
+runs each one its runner can. `scripts/release.sh`, on the release machine, checks every binary is
+the format, architecture and version its name claims, then publishes the packages.
+
 ## What native declines
 
 The port stands behind a result or it doesn't return one. Two cases go back to the JavaScript codegen:

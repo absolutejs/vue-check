@@ -46,15 +46,33 @@ type Core = {
 	getDefaultCompilerOptions?: (target?: number, lib?: string, strictTemplates?: boolean, typesRoot?: string) => VueOptions;
 };
 
+const versionOf = (packageJson: string) => (JSON.parse(readFileSync(packageJson, 'utf8')) as { version: string }).version;
+
+/** The binary npm installed for this platform (one of the optional
+ * @absolutejs/vue-check-<platform> packages), when it is this version's. */
+const installedBinary = () => {
+	const platform = { darwin: 'darwin', linux: 'linux', win32: 'windows' }[process.platform as string];
+	const arch = { arm64: 'arm64', x64: 'x64' }[process.arch as string];
+	if (!platform || !arch) return null;
+	try {
+		const manifest = createRequire(import.meta.url).resolve(`@absolutejs/vue-check-${platform}-${arch}/package.json`);
+		if (versionOf(manifest) !== versionOf(join(import.meta.dir, '..', 'package.json'))) return null;
+
+		return join(dirname(manifest), 'bin', platform === 'windows' ? 'vue-check-codegen.exe' : 'vue-check-codegen');
+	} catch {
+		return null;
+	}
+};
+
+/** VUE_CHECK_NATIVE=0 turns the native codegen off and VUE_CHECK_NATIVE=<path>
+ * names a binary; otherwise the installed one, or one built in this checkout. */
 const binaryPath = () => {
 	const configured = process.env.VUE_CHECK_NATIVE;
 	if (configured === '0' || configured === 'false') return null;
-	const path = configured || join(import.meta.dir, '..', 'native', 'target', 'release', 'vue-check-codegen');
+	const path = configured || installedBinary() || join(import.meta.dir, '..', 'native', 'target', 'release', 'vue-check-codegen');
 
 	return existsSync(path) ? path : null;
 };
-
-const versionOf = (packageJson: string) => (JSON.parse(readFileSync(packageJson, 'utf8')) as { version: string }).version;
 
 /** The packages Vue's codegen would run with, when they are exactly the ones
  * the port reproduces; otherwise, which one isn't. */

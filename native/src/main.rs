@@ -570,6 +570,10 @@ fn main() -> ExitCode {
         Some("interpolate") => run_interpolate(),
         Some("template") => run_template(),
         Some("generate") => run_generate(),
+        Some("--version") => {
+            println!("vue-check-codegen {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
         _ => {
             eprintln!(
                 "usage: vue-check-codegen <parse|interpolate|template|generate> < input.jsonl > output.jsonl"
