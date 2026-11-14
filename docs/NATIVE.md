@@ -111,6 +111,27 @@ and its mappings (source offsets, generated offsets, lengths, and which errors e
 the text is the path of language-core's type declarations relative to the file, which the `///
 <reference>` lines at the top carry.
 
+## Results
+
+The folder diff passes (every generated file and `codegen.json` equal) on each project below, on a
+planted-error copy, and on all 252 conformance cases; the four-way differential (`bench/sweep.sh`)
+is unchanged with native codegen on. Native is on by default where the versions and options match,
+so `bench/codegen-bar.sh <project> <tsconfig> <out>` reruns the comparison for one project.
+
+The codegen phase and the whole run, as medians of five runs from `bench/run.ts` on the same
+machine as the README's tables. The JavaScript figures are those tables' figures.
+
+| project | Vue files | native | codegen, JavaScript | codegen, native | whole run, JavaScript | whole run, native |
+|---|---|---|---|---|---|---|
+| gitea | 26 | 26 | 1.21 s · 238 MB | 0.69 s · 180 MB | 1.97 s | 1.41 s |
+| slidev | 121 | 119 | 1.55 s · 252 MB | 0.94 s · 211 MB | 1.71 s | 1.07 s |
+| vitepress-client | 66 | 66 | 1.47 s · 234 MB | 0.59 s · 171 MB | 2.05 s | 1.00 s |
+| vitepress-docs | 4 | 4 | 0.49 s · 151 MB | 0.44 s · 126 MB | 0.73 s | 0.68 s |
+
+The script codegen differs by Vue version (3.3, 3.4, 3.5 and 3.6 each change the code written). The
+whole-file comparison is run at each (`TARGET=3.4 native/oracle/run.sh …`), on the conformance
+suite's files and on generated ones, with no differences.
+
 ## Writing the Rust
 
 - **No `unsafe`.** It is to Rust what a type cast is to TypeScript: a claim the compiler can't check.
