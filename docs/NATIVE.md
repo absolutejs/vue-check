@@ -8,7 +8,7 @@ is the plan to make it native, and the bar it has to pass.
 
 For a version it claims, the native codegen must write **the same output folder** as the JavaScript
 codegen (`src/codegen.ts`) on the same project: every generated file byte for byte, and
-`codegen.json` equal (every source map, every segment's verification rule, the unparsed list).
+`codegen.json` equal (every source map, every segment's verification rule, the files that can't be checked).
 Identical input to the checker means identical errors by construction. `bench/codegen-diff.ts`
 compares the two folders.
 
@@ -54,7 +54,7 @@ the binary in one run, as lines of JSON on its standard input: the file's text, 
 code is for (`target`), and the folder of language-core's type declarations relative to the file.
 Each line that comes back is the file's generated code and mappings, or the reason the port leaves
 the file alone. Everything after that is the same code for both: the two repairs, the language of
-the generated file, its syntax check, the links and `codegen.json`.
+the generated file, the links and `codegen.json`.
 
 A project is one the port reproduces when:
 

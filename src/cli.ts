@@ -238,9 +238,7 @@ const projectTypeScript = (): Ts => {
 	return parser;
 };
 const parsedFiles = new Map<string, import('typescript').SourceFile>();
-const spanAt = (file: string, text: string, position: number, code: string) => {
-	const lexical = SPAN.exec(text.slice(position))?.[0];
-	if (lexical?.startsWith('//') || lexical?.startsWith('/*')) return lexical.length;
+const parsedFile = (file: string, text: string) => {
 	const ts = projectTypeScript();
 	let sourceFile = parsedFiles.get(file);
 	if (!sourceFile) {
@@ -248,9 +246,23 @@ const spanAt = (file: string, text: string, position: number, code: string) => {
 		sourceFile = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
 		parsedFiles.set(file, sourceFile);
 	}
+
+	return sourceFile;
+};
+/** The parser's own diagnostic for an error the checker printed, when the
+ * error is a syntax error. */
+const syntaxErrorAt = (file: string, text: string, position: number, code: string) =>
+	(
+		(parsedFile(file, text) as unknown as { parseDiagnostics?: { code: number; length: number; messageText: unknown; start: number }[] })
+			.parseDiagnostics ?? []
+	).find((diagnostic) => diagnostic.start === position && String(diagnostic.code) === code);
+const spanAt = (file: string, text: string, position: number, code: string) => {
+	const lexical = SPAN.exec(text.slice(position))?.[0];
+	if (lexical?.startsWith('//') || lexical?.startsWith('/*')) return lexical.length;
+	const ts = projectTypeScript();
+	const sourceFile = parsedFile(file, text);
 	/* A syntax error's span is the parser's own diagnostic: exact. */
-	const parseDiagnostics = (sourceFile as unknown as { parseDiagnostics?: { code: number; length: number; start: number }[] }).parseDiagnostics ?? [];
-	const syntax = parseDiagnostics.find((diagnostic) => diagnostic.start === position && String(diagnostic.code) === code);
+	const syntax = syntaxErrorAt(file, text, position, code);
 	if (syntax) return syntax.length;
 	let found: import('typescript').Node | undefined;
 	const visit = (node: import('typescript').Node) => {
@@ -298,6 +310,10 @@ let errors = 0;
 /* Every error the checker printed, before mapping drops vue-tsc's hidden ones. */
 let reported = 0;
 let droppedJavaScriptGrammar = false;
+/* Syntax errors the checker stopped on in generated code that map nowhere:
+ * artifacts of codegen, which vue-tsc hides (and then type-checks). The
+ * first of each file. */
+const hiddenSyntaxErrors = new Map<string, { line: number; message: string }>();
 for (const line of lines) {
 	const match = ERROR_LINE.exec(line);
 	if (!match) {
@@ -328,6 +344,15 @@ for (const line of lines) {
 	// Not where vue-tsc reports it: the codegen's own scaffolding.
 	if (!position) {
 		if (map && /^TS8\d{3}$/.test(code ?? '')) droppedJavaScriptGrammar = true;
+		if (map && !hiddenSyntaxErrors.has(map.source)) {
+			const generated = readFileSync(join(root, file), 'utf8');
+			const syntax = syntaxErrorAt(file, generated, offsetOf(generated, Number(rawLine), Number(rawColumn)), (code ?? '').replace('TS', ''));
+			if (syntax)
+				hiddenSyntaxErrors.set(map.source, {
+					line: Number(rawLine),
+					message: typeof syntax.messageText === 'string' ? syntax.messageText : 'syntax error'
+				});
+		}
 		continue;
 	}
 	errors++;
@@ -344,11 +369,7 @@ if (phasesFile)
 			vueFiles: Object.keys(codegenResult.maps).length
 		})
 	);
-/* Generated code with a syntax error that maps nowhere (an artifact of
- * codegen, which vue-tsc hides). When any syntax error was reported, the
- * checker reports only syntax errors, as tsc does for vue-tsc: the output is
- * vue-tsc's. When none was, vue-tsc would have type-checked and the checker
- * couldn't: never report that as clean. */
+/* A file the codegen can't make checkable as vue-tsc checks it. */
 const fatal = unparsedFiles.filter((item) => item.fatal);
 if (fatal.length > 0) {
 	for (const item of fatal) console.error(`vue-check: ${item.file}: ${item.message}.`);
@@ -363,9 +384,15 @@ if (droppedJavaScriptGrammar && errors === 0) {
 	);
 	process.exit(3);
 }
-if (unparsedFiles.length > 0 && errors === 0) {
-	for (const item of unparsedFiles)
-		console.error(`vue-check: the TypeScript generated for ${item.file} doesn't parse (generated line ${item.line}: ${item.message}).`);
+/* Generated code with a syntax error that maps nowhere. A checker that
+ * behaves like tsc reports only syntax errors once there is one, and
+ * type-checks nothing. When one of them is the user's own (it maps back),
+ * that is vue-tsc's output too. When every one was hidden, vue-tsc would have
+ * type-checked and the checker didn't: never report that as clean. The
+ * checker parses every file, so its own output says whether this happened. */
+if (hiddenSyntaxErrors.size > 0 && errors === 0) {
+	for (const [file, item] of hiddenSyntaxErrors)
+		console.error(`vue-check: the TypeScript generated for ${file} doesn't parse (generated line ${item.line}: ${item.message}).`);
 	console.error('vue-check: the project was NOT type-checked. Please report the file(s) above.');
 	process.exit(3);
 }

@@ -112,9 +112,8 @@ Errors in `.ts` files pass through unchanged. The output format is `vue-tsc`'s:
 ### 4. Guarantees
 
 - **Syntax errors are reported as vue-tsc reports them.** A checker that behaves like `tsc` reports only
-  syntax errors when it finds any, and skips type checks. So `vue-check` parses every generated file
-  with TypeScript's parser. A syntax error that maps back to the user's code (`{{ a + }}`) is theirs:
-  the check runs and reports it, as `vue-tsc` does. Two codegen patterns that `vue-tsc`'s
+  syntax errors when it finds any, and skips type checks. A syntax error that maps back to the user's
+  code (`{{ a + }}`) is theirs: the check reports it, as `vue-tsc` does. Two codegen patterns that `vue-tsc`'s
   error-tolerant path accepts are normalized to valid TypeScript **without changing the text's
   length**, so every source-map offset stays exact:
   - `//` inside a string in a component's props copy;
@@ -125,8 +124,10 @@ Errors in `.ts` files pass through unchanged. The output format is `vue-tsc`'s:
   `//` into a comment, and vue-check does. Both are tracked, with their removal steps, in
   `UPSTREAM_ISSUES.md` (vuejs/language-tools#6360 and #6361).
 
-  Any other syntax error that maps nowhere would stop the checker on codegen's text, so `vue-check`
-  stops with exit code 3 and names the file.
+  Any other syntax error that maps nowhere is codegen's own, which `vue-tsc` hides and then
+  type-checks past; the checker stops on it instead. The checker parses every file, so its output
+  says when that happened: when the syntax errors it stopped on were all hidden ones, `vue-check`
+  exits with code 3 and names the file, never a clean result.
 - **Only what the project installed.** Vue's codegen, Volar and TypeScript are loaded from the
   project's `node_modules`, never from Bun's global install cache (which Bun's `require` falls back to
   for a package the project doesn't have).

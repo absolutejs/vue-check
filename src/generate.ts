@@ -450,37 +450,7 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 				mkdirSync(dirname(target), { recursive: true });
 				writeFileSync(target, written);
 			}
-			/* A checker that behaves like tsc stops at any syntax error and checks
-			 * nothing. A syntax error in the user's own code (it maps back to the
-			 * .vue file, as vue-tsc would report it) is theirs to see, so the check
-			 * runs and reports it, as vue-tsc does. One that maps nowhere is an
-			 * artifact of codegen: vue-tsc hides it, but the checker would stop on
-			 * it, so the project couldn't be checked. Found here, with TypeScript's
-			 * parser, for every file at once. */
-			const scriptKind = { '.js': ts.ScriptKind.JS, '.jsx': ts.ScriptKind.JSX, '.ts': ts.ScriptKind.TS, '.tsx': ts.ScriptKind.TSX }[extension];
-			const parsedFile = ts.createSourceFile(target, written, ts.ScriptTarget.Latest, false, scriptKind);
-			const syntax =
-				(parsedFile as unknown as { parseDiagnostics?: { code: number; length?: number; messageText: unknown; start?: number }[] })
-					.parseDiagnostics ?? [];
 			const shift = written.length - original.length;
-			const sourceMap = syntax.length > 0 && writing ? new volar.SourceMap(embedded.mappings) : null;
-			const unmapped = syntax.find((diagnostic) => {
-				if (!sourceMap) return false;
-				const start = (diagnostic.start ?? 0) - shift;
-				const end = start + (diagnostic.length ?? 0);
-				for (const _range of sourceMap.toSourceRange(start, end, true, (data) =>
-					volar.shouldReportDiagnostics(data, 'undefined', String(diagnostic.code))
-				))
-					return false;
-
-				return true;
-			});
-			if (unmapped)
-				unparsed.push({
-					file: relative(options.root, file),
-					line: parsedFile.getLineAndCharacterOfPosition(unmapped.start ?? 0).line + 1,
-					message: typeof unmapped.messageText === 'string' ? unmapped.messageText : 'syntax error'
-				});
 			maps[relative(options.root, target)] = {
 				mappings: embedded.mappings.map((mapping) => ({
 					data: mapping.data,
