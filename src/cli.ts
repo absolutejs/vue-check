@@ -276,9 +276,18 @@ const spanAt = (file: string, text: string, position: number, code: string) => {
 		ts.forEachChild(node, visit);
 	};
 	ts.forEachChild(sourceFile, visit);
+	/* A name read from the component is written `__VLS_ctx.name`, and Vue maps
+	 * the two together as the name. TypeScript never reports an error on
+	 * `__VLS_ctx` alone: one that starts there is on the access, or on an
+	 * expression that begins with it (`__VLS_ctx.list[index]`), and the access
+	 * is the least of those. */
+	if (found && ts.isIdentifier(found) && CONTEXT_OBJECTS.has(found.text) && ts.isPropertyAccessExpression(found.parent) && found.parent.expression === found)
+		found = found.parent;
 
 	return Math.max(1, found ? found.end - position : (lexical?.length ?? 1));
 };
+/* What Vue's codegen reads a template's names from. */
+const CONTEXT_OBJECTS = new Set(['__VLS_ctx', '__VLS_dollars']);
 
 /**
  * A generated-file error, where vue-tsc would report it: the position in the
@@ -330,13 +339,14 @@ const sourcePosition = (file: string, map: SourceMap, line: number, column: numb
 	 * in Vue's scaffolding, which maps nowhere, and the error's length (a
 	 * parse of the file with TypeScript) isn't needed to know it. Not for a
 	 * map whose rules are Volar's own functions, which count their calls. */
+	const mappedByRange = () => mapped(start + spanAt(file, generated, position, code));
 	if (!liveMaps.has(map) && mapped(start) === null) {
-		if (verifySpans && mapped(start + spanAt(file, generated, position, code)) !== null)
+		if (verifySpans && mappedByRange() !== null)
 			throw new Error(`vue-check: ${file}(${line},${column}) TS${code} maps by its range and not by its start`);
 
 		return null;
 	}
-	const sourceStart = mapped(start + spanAt(file, generated, position, code));
+	const sourceStart = mappedByRange();
 
 	return sourceStart === null ? null : positionOf(readFileSync(join(root, map.source), 'utf8'), sourceStart);
 };
@@ -347,6 +357,21 @@ const sourcePosition = (file: string, map: SourceMap, line: number, column: numb
  * needs asking TypeScript's parser whether it is a syntax error. */
 const TYPE_CHECK_ONLY = new Set(['TS2304', 'TS2322', 'TS2339', 'TS2344', 'TS2345', 'TS6133', 'TS6196']);
 const typeChecked = lines.some((line) => TYPE_CHECK_ONLY.has(ERROR_LINE.exec(line)?.[5] ?? ''));
+/* A project's `rootDir` is checked against where each file is, and a
+ * generated file is in .vue-check/, outside it. TS6059 names the file and the
+ * rootDir: for a generated file whose Vue file is under that rootDir the
+ * error is this tool's own doing and vue-tsc has none. One whose Vue file is
+ * outside it too is the project's, and is reported for the Vue file. */
+const ROOT_DIR_ERROR = /^File '([^']+)' is not under 'rootDir' '([^']+)'/;
+const sourceOfGenerated = new Map(generatedPaths);
+const isOwnRootDirError = (message: string) => {
+	const [, file = '', rootDir = ''] = ROOT_DIR_ERROR.exec(message) ?? [];
+	const source = sourceOfGenerated.get(file);
+	if (!source) return false;
+	const inside = relative(rootDir, source);
+
+	return inside !== '' && !inside.startsWith('..');
+};
 let errors = 0;
 /* Every error the checker printed, before mapping drops vue-tsc's hidden ones. */
 let reported = 0;
@@ -361,6 +386,7 @@ for (const line of lines) {
 		/* An error with no position (an invalid option, a missing file): the
 		 * project's own, printed as tsc prints it. */
 		if (GLOBAL_ERROR.test(line)) {
+			if (line.startsWith('error TS6059: ') && isOwnRootDirError(line.slice('error TS6059: '.length))) continue;
 			reported++;
 			errors++;
 			console.log(line);
@@ -369,6 +395,10 @@ for (const line of lines) {
 	}
 	reported++;
 	const [, rawFile = '', rawLine = '0', rawColumn = '0', severity, code, message] = match;
+	if (code === 'TS6059' && isOwnRootDirError(message ?? '')) {
+		reported--;
+		continue;
+	}
 	const file = fileOf(rawFile);
 	if (file === relative(root, checkConfig)) {
 		/* An option error the generated config inherits: where vue-tsc reports

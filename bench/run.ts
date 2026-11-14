@@ -108,8 +108,13 @@ const errorsOf = (stdout: string) =>
 /* Resolved as Node resolves it from the project: a workspace package finds
  * the monorepo's hoisted install. */
 const projectRequire = createRequire(join(project, 'package.json'));
+/* VUE_TSC_HEAP_MB: Node's heap limit for vue-tsc. Its default (about 2 GB
+ * here) is under what vue-tsc needs on a large project, which then ends in an
+ * out-of-memory abort and not a result; such projects raise it in their own
+ * scripts. */
+const vueTscHeap = process.env.VUE_TSC_HEAP_MB ? [`--max-old-space-size=${process.env.VUE_TSC_HEAP_MB}`] : [];
 const tools = {
-	'vue-tsc': ['node', projectRequire.resolve('vue-tsc/bin/vue-tsc.js'), '--noEmit', '-p', tsconfig, ...vueTscArgs],
+	'vue-tsc': ['node', ...vueTscHeap, projectRequire.resolve('vue-tsc/bin/vue-tsc.js'), '--noEmit', '-p', tsconfig, ...vueTscArgs],
 	'vue-check': [process.execPath, join(tool, 'src/cli.ts'), '-p', tsconfig, ...vueTscArgs],
 	'vue-check (1 thread)': [process.execPath, join(tool, 'src/cli.ts'), '-p', tsconfig, '--threads=1', ...vueTscArgs]
 } as const;

@@ -27,7 +27,7 @@ if [ -n "${MODULES:-}" ]; then
 	modules=(-v "$(realpath "$MODULES")":/project/node_modules:ro)
 fi
 docker run --rm --network none --memory "$memory" --memory-swap "$memory" \
-	--user "$(id -u):$(id -g)" -e HOME=/tmp -e VUE_CHECK_VERIFY_SPANS="${VUE_CHECK_VERIFY_SPANS:-}" \
+	--user "$(id -u):$(id -g)" -e HOME=/tmp -e VUE_CHECK_VERIFY_SPANS="${VUE_CHECK_VERIFY_SPANS:-}" -e VUE_TSC_HEAP_MB="${VUE_TSC_HEAP_MB:-}" \
 	-v "$mount":/project \
 	"${modules[@]}" \
 	-v "$tool":/tool:ro \
