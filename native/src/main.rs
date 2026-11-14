@@ -14,6 +14,7 @@ mod dump;
 mod js;
 mod script;
 mod sfc;
+mod style;
 mod template;
 mod utf16;
 
@@ -431,6 +432,7 @@ fn dump_template_codes(codes: &[codegen::Code], template: &str) -> Vec<Value> {
                     Source::Script => "script".to_owned(),
                     Source::ScriptSetup => "scriptSetup".to_owned(),
                     Source::Style(index) => format!("style_{index}"),
+                    Source::Main => "main".to_owned(),
                 };
                 json!([text, source, map.offset(*offset), verification, group])
             }
@@ -456,6 +458,78 @@ fn run_template() -> io::Result<()> {
             &mut stdout,
             &json!({ "file": recorded.file, "templates": replayed }),
         )?;
+        stdout.write_all(b"\n")?;
+    }
+    stdout.flush()
+}
+
+/// One file to generate: its text, and the folder of language-core's type
+/// declarations as its reference lines name it.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerateInput {
+    file: String,
+    text: String,
+    /// Absent when the project has no language-core to name.
+    types_path: Option<String>,
+}
+
+/// The generated code of one file, in the shape the oracle records it.
+fn generate_one(input: &GenerateInput) -> Value {
+    use codegen::Verification;
+
+    let name = input.file.rsplit('/').next().unwrap_or(&input.file);
+    match codegen::file::generate_file(&input.text, name, input.types_path.as_deref().unwrap_or(""))
+    {
+        Ok(generated) => {
+            let mappings: Vec<Value> = generated
+                .mappings
+                .iter()
+                .map(|mapping| {
+                    let verification = match mapping.verification {
+                        Verification::Off => json!(0),
+                        Verification::On => json!(1),
+                        Verification::NotTs2353OrTs2561 => json!("ts2353"),
+                        Verification::NotTs6133 => json!("ts6133"),
+                        Verification::Stateful => json!("stateful"),
+                    };
+                    json!({
+                        "generated": mapping.generated_offsets,
+                        "generatedLengths": null,
+                        "lengths": mapping.lengths,
+                        "source": mapping.source_offsets,
+                        "verification": verification,
+                    })
+                })
+                .collect();
+            json!({
+                "file": input.file,
+                "generated": {
+                    "id": generated.id,
+                    "languageId": generated.language_id,
+                    "mappings": mappings,
+                    "text": generated.text,
+                },
+            })
+        }
+        Err(declined) => json!({
+            "file": input.file,
+            "unsupported": declined.reason,
+            "poisonsLaterParses": declined.poisons_later_parses,
+        }),
+    }
+}
+
+fn run_generate() -> io::Result<()> {
+    let stdin = io::stdin().lock();
+    let mut stdout = io::BufWriter::new(io::stdout().lock());
+    for line in stdin.lines() {
+        let line = line?;
+        if line.is_empty() {
+            continue;
+        }
+        let input: GenerateInput = serde_json::from_str(&line)?;
+        serde_json::to_writer(&mut stdout, &generate_one(&input))?;
         stdout.write_all(b"\n")?;
     }
     stdout.flush()
@@ -489,9 +563,10 @@ fn main() -> ExitCode {
         Some("parse") => run_parse(),
         Some("interpolate") => run_interpolate(),
         Some("template") => run_template(),
+        Some("generate") => run_generate(),
         _ => {
             eprintln!(
-                "usage: vue-check-codegen <parse|interpolate|template> < input.jsonl > output.jsonl"
+                "usage: vue-check-codegen <parse|interpolate|template|generate> < input.jsonl > output.jsonl"
             );
             return ExitCode::from(2);
         }

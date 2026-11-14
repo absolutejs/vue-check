@@ -1671,6 +1671,18 @@ impl<'a> Parser<'a> {
                     }
                     Prop::Directive(directive) => {
                         let loc = self.get_loc(value_start, value_end);
+                        // The codegen locates the parts of an expression by
+                        // adding offsets in its text to where it starts.
+                        // After an entity was decoded the text and the source
+                        // no longer line up, and the original's offsets are
+                        // then counted in UTF-16 units of the decoded text.
+                        if !value.is_ascii()
+                            && self.input.get(value_start..value_end) != Some(&value)
+                        {
+                            self.give_up(
+                                "an expression with an entity and characters outside ASCII",
+                            );
+                        }
                         let exp =
                             create_simple_expression(value, false, loc, ConstantType::NotConstant);
                         if directive.name == "for" {

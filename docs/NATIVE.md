@@ -52,7 +52,10 @@ The port stands behind a result or it doesn't return one. Two cases go back to t
 
 - **A file whose result it can't guarantee.** Where the original's behavior comes from JavaScript
   itself (an offset before the start of the text, half of a surrogate pair), the native side marks
-  the file unsupported instead of guessing.
+  the file unsupported instead of guessing. The same goes for a file that sets a compiler option in
+  a comment (`<!-- @strictTemplates true -->`), a template in a language other than HTML, and a
+  directive expression in which a decoded entity sits next to characters outside ASCII (the
+  original then counts offsets in the decoded text).
 - **A project with a file that changes how later files parse.** Vue's parser keeps its `v-pre` and
   `<pre>` state between files and never clears it: a file that ends inside `v-pre`, or that makes the
   parser throw halfway, changes how every file after it in the same process is parsed. Only the
@@ -78,6 +81,13 @@ Real projects contain almost no malformed templates, so `stress.ts` generates th
 generator: malformed tags, every kind of attribute and directive, entities, comments and CDATA,
 raw-text blocks, characters outside ASCII, and files cut off at any point, so that every state of the
 tokenizer is also an end state.
+
+The last layer is the whole file. The oracle records the code Volar hands TypeScript for each file
+and its mappings (source offsets, generated offsets, lengths, and which errors each range reports);
+`vue-check-codegen generate` writes the same from the file's text, and
+`native/oracle/compare-generated.ts` compares them. The one input the native side is given besides
+the text is the path of language-core's type declarations relative to the file, which the `///
+<reference>` lines at the top carry.
 
 ## Writing the Rust
 

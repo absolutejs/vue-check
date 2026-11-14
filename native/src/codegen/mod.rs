@@ -4,6 +4,10 @@
 //! The original is written as generators that yield pieces of code. Here each
 //! one is a function that appends to a list, in the same order.
 
+pub mod file;
+mod local_types_data;
+pub mod script;
+pub mod style;
 pub mod template;
 
 use std::fmt::Write;
@@ -15,6 +19,8 @@ pub enum Source {
     Script,
     ScriptSetup,
     Style(usize),
+    /// The whole file: an offset that isn't relative to a block (`'main'`).
+    Main,
 }
 
 /// Which errors `vue-tsc` reports on a piece of generated code: the

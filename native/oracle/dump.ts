@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { appendFileSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 
 /*
  * The oracle for the native template parser: what the project's own
@@ -363,14 +363,24 @@ if (ported) {
 		return result;
 	};
 }
+const vueOptions = core?.getDefaultCompilerOptions() ?? null;
 const languagePlugin = (() => {
 	if (!core || !analysis) return null;
 	const { ts } = analysis;
-	const vueOptions = core.getDefaultCompilerOptions();
 	if (typeof core.createGlobalTypesWriter === 'function') vueOptions.globalTypesPath = core.createGlobalTypesWriter(vueOptions, () => {});
 
 	return core.createVueLanguagePlugin(ts, {}, vueOptions, (id: string) => id);
 })();
+/** The folder of language-core's type declarations as a file's reference
+ * lines name it: an input of the codegen, which the JavaScript side works out. */
+const typesPathOf = (path: string) => {
+	const typesRoot: string | undefined = vueOptions?.typesRoot;
+	if (!typesRoot) return null;
+	if (!isAbsolute(typesRoot)) return typesRoot;
+	const relativePath = relative(dirname(path), typesRoot);
+
+	return relativePath !== typesRoot && !relativePath.startsWith('./') && !relativePath.startsWith('../') ? `./${relativePath}` : relativePath;
+};
 const volar = ported ? createRequire(corePackage)('@volar/language-core') : null;
 /** The TypeScript vue-tsc checks for a file, and its mappings. */
 const generated = (path: string, source: string) => {
@@ -427,7 +437,7 @@ for (const [index, path] of paths.entries()) {
 	if (index < from) continue;
 	const file = relative(root, path);
 	const source = readFileSync(path, 'utf8');
-	files.push(JSON.stringify({ file, text: source }));
+	files.push(JSON.stringify({ file, text: source, typesPath: typesPathOf(path) }));
 	const record: Record<string, unknown> = { file, versions };
 	let poisoned = false;
 	try {

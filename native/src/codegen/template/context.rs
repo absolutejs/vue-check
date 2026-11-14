@@ -184,6 +184,15 @@ pub struct TemplateContext {
 }
 
 impl TemplateContext {
+    /// A context whose combine tokens start after `first_token`, so that two
+    /// pieces of generated code that end up in one file don't share any.
+    pub fn starting_at(first_token: u32) -> Self {
+        Self {
+            next_token: first_token,
+            ..Self::default()
+        }
+    }
+
     /// A new `Symbol()` for `__combineToken`.
     pub fn token(&mut self) -> u32 {
         self.next_token += 1;

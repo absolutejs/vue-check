@@ -33,4 +33,7 @@ bun "$tool/native/oracle/compare-interpolations.ts" "$out" || status=1
 # The templates the oracle recorded, generated natively.
 "$tool/native/target/release/vue-check-codegen" template < "$out/oracle.jsonl" > "$out/templates.jsonl"
 bun "$tool/native/oracle/compare-templates.ts" "$out" || status=1
+# Each file's generated code and mappings.
+"$tool/native/target/release/vue-check-codegen" generate < "$out/files.jsonl" > "$out/generated.jsonl"
+bun "$tool/native/oracle/compare-generated.ts" "$out" || status=1
 exit $status
