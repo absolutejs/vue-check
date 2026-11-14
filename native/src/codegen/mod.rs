@@ -6,6 +6,8 @@
 
 pub mod template;
 
+use std::fmt::Write;
+
 /// The block a piece of generated code maps back to (`block.name`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Source {
@@ -151,4 +153,144 @@ impl Boundary {
             features: self.features,
         }
     }
+}
+
+/// `generateCamelized`: a hyphenated name as its camel-case form, each part
+/// mapped to where it is in the name.
+pub fn generate_camelized(
+    out: &mut Vec<Code>,
+    token: u32,
+    code: &str,
+    source: Source,
+    offset: usize,
+    features: Features,
+) {
+    let features = Features {
+        combine: features.combine.or(Some(token)),
+        ..features
+    };
+    let mut offset = offset;
+    for (index, part) in code.split('-').enumerate() {
+        if !part.is_empty() {
+            out.push(Code::Mapped {
+                text: if index == 0 {
+                    part.to_owned()
+                } else {
+                    crate::js::capitalize(part)
+                },
+                source,
+                offset,
+                features,
+            });
+        }
+        offset += part.len() + 1;
+    }
+}
+
+/// `generateEscaped` with `/([\\'])/`: a class name inside quotes, with a
+/// backslash before each backslash and quote.
+pub fn generate_escaped(
+    out: &mut Vec<Code>,
+    token: u32,
+    text: &str,
+    source: Source,
+    offset: usize,
+    features: Features,
+) {
+    let features = Features {
+        combine: features.combine.or(Some(token)),
+        ..features
+    };
+    let mapped = |text: &str, offset: usize| Code::Mapped {
+        text: text.to_owned(),
+        source,
+        offset,
+        features,
+    };
+    // The original splits on the two characters and keeps them, so the
+    // pieces alternate: text, then one character to escape.
+    let mut start = 0;
+    for (index, char) in text
+        .char_indices()
+        .filter(|(_, char)| matches!(char, '\\' | '\''))
+    {
+        out.push(mapped(text.get(start..index).unwrap_or(""), offset + start));
+        out.push("\\".into());
+        let end = index + char.len_utf8();
+        out.push(mapped(text.get(index..end).unwrap_or(""), offset + index));
+        start = end;
+    }
+    out.push(mapped(text.get(start..).unwrap_or(""), offset + start));
+}
+
+/// `generateStringLiteralKey`: a name in quotes.
+pub fn generate_string_literal_key(
+    out: &mut Vec<Code>,
+    token: u32,
+    code: &str,
+    offset: usize,
+    features: Features,
+) {
+    let boundary = Boundary::start(
+        out,
+        token,
+        Source::Template,
+        offset,
+        offset + code.len(),
+        features,
+    );
+    out.push("'".into());
+    out.push(Code::Mapped {
+        text: code.to_owned(),
+        source: Source::Template,
+        offset,
+        features: boundary.features,
+    });
+    out.push("'".into());
+    out.push(boundary.end());
+}
+
+/// `generateUnicode`: an attribute's value. One with a backslash or a line
+/// break in it is written as `\uXXXX` escapes, one per UTF-16 unit.
+pub fn generate_unicode(
+    out: &mut Vec<Code>,
+    token: u32,
+    code: &str,
+    offset: usize,
+    features: Features,
+) {
+    if code.contains('\\') || code.contains('\n') {
+        let boundary = Boundary::start(
+            out,
+            token,
+            Source::Template,
+            offset,
+            offset + code.len(),
+            features,
+        );
+        let mut escaped = String::with_capacity(code.len() * 6);
+        for unit in code.encode_utf16() {
+            // Writing to a `String` can't fail.
+            let _ = write!(escaped, "\\u{unit:04x}");
+        }
+        out.push(escaped.into());
+        out.push(boundary.end());
+    } else {
+        out.push(Code::Mapped {
+            text: code.to_owned(),
+            source: Source::Template,
+            offset,
+            features,
+        });
+    }
+}
+
+/// `toString(codes)`.
+pub fn to_string(codes: &[Code]) -> String {
+    codes
+        .iter()
+        .map(|code| match code {
+            Code::Text(text) | Code::Mapped { text, .. } => text.as_str(),
+        })
+        .collect()
 }

@@ -310,6 +310,59 @@ if (ported) {
 		interpolations.push({ ...call, accesses: ctx.accessLog.slice(accessMark), codes: codesOf(codes) });
 	};
 }
+/* generateTemplate wrapped the same way: its options and what it returned. */
+let templates: unknown[] = [];
+if (ported) {
+	const module = coreRequire(join(dirname(corePackage), 'lib/codegen/template/index.js'));
+	const original = module.generateTemplate;
+	module.generateTemplate = (options: AnyNode) => {
+		const result = original(options);
+		const compiler = options.vueCompilerOptions;
+		templates.push({
+			codes: codesOf(result.codes),
+			compiler: {
+				checkRequiredFallthroughAttributes: compiler.checkRequiredFallthroughAttributes,
+				checkUnknownComponents: compiler.checkUnknownComponents,
+				checkUnknownDirectives: compiler.checkUnknownDirectives,
+				checkUnknownEvents: compiler.checkUnknownEvents,
+				checkUnknownProps: compiler.checkUnknownProps,
+				dataAttributes: compiler.dataAttributes,
+				fallthroughAttributes: compiler.fallthroughAttributes,
+				fallthroughComponentNames: compiler.fallthroughComponentNames,
+				htmlAttributes: compiler.htmlAttributes,
+				inferComponentDollarEl: compiler.inferComponentDollarEl,
+				inferComponentDollarRefs: compiler.inferComponentDollarRefs,
+				inferTemplateDollarAttrs: compiler.inferTemplateDollarAttrs,
+				inferTemplateDollarEl: compiler.inferTemplateDollarEl,
+				inferTemplateDollarRefs: compiler.inferTemplateDollarRefs,
+				inferTemplateDollarSlots: compiler.inferTemplateDollarSlots,
+				lib: compiler.lib,
+				strictVModel: compiler.strictVModel
+			},
+			componentName: options.componentName,
+			contextAccesses: [...result.contextAccesses.keys()],
+			dotValueAccesses: [...result.dotValueAccesses],
+			dotValueBindings: [...options.dotValueBindings],
+			generatedTypes: [...result.generatedTypes],
+			hasAst: Boolean(options.template.ast),
+			hasDefineSlots: Boolean(options.hasDefineSlots),
+			importedComponents: [...options.importedComponents],
+			inheritAttrs: options.inheritAttrs,
+			isVapor: Boolean(options.isVapor),
+			lang: options.template.lang,
+			propsAssignName: options.propsAssignName ?? null,
+			reassertBindings: [...options.reassertBindings],
+			scriptLang: options.scriptLang,
+			setupBindings: [...options.setupBindings],
+			setupConsts: [...options.setupConsts],
+			setupRefs: [...options.setupRefs],
+			slotsAssignName: options.slotsAssignName ?? null,
+			template: options.template.content
+		});
+
+		return result;
+	};
+}
 const languagePlugin = (() => {
 	if (!core || !analysis) return null;
 	const { ts } = analysis;
@@ -398,8 +451,10 @@ for (const [index, path] of paths.entries()) {
 			poisoned = leaked();
 			if (!poisoned) {
 				interpolations = [];
+				templates = [];
 				record.generated = generated(path, source);
 				record.interpolations = interpolations;
+				record.templates = templates;
 				poisoned = leaked();
 			}
 		} else record.sfc = { ast };

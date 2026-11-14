@@ -240,9 +240,225 @@ fn replay_interpolation(call: &InterpolationCall) -> Value {
     let dumped = dump_codes(&codes, call);
     json!({
         "codes": dumped,
-        "accesses": context.accesses.iter().map(|access| access.name.as_str()).collect::<Vec<_>>(),
+        "accesses": context.access_log,
         "unsupported": context.unsupported,
     })
+}
+
+/// One recorded `generateTemplate` call (see `native/oracle/dump.ts`).
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "the recorded options, one to one"
+)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TemplateCall {
+    compiler: RecordedCompiler,
+    component_name: String,
+    dot_value_bindings: Vec<String>,
+    has_ast: bool,
+    has_define_slots: bool,
+    imported_components: Vec<String>,
+    inherit_attrs: bool,
+    is_vapor: bool,
+    lang: String,
+    props_assign_name: Option<String>,
+    reassert_bindings: Vec<String>,
+    script_lang: String,
+    setup_bindings: Vec<String>,
+    setup_consts: Vec<String>,
+    setup_refs: Vec<String>,
+    slots_assign_name: Option<String>,
+    template: String,
+}
+
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "the recorded options, one to one"
+)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordedCompiler {
+    check_required_fallthrough_attributes: bool,
+    check_unknown_components: bool,
+    check_unknown_directives: bool,
+    check_unknown_events: bool,
+    check_unknown_props: bool,
+    data_attributes: Vec<String>,
+    fallthrough_attributes: bool,
+    fallthrough_component_names: Vec<String>,
+    html_attributes: Vec<String>,
+    infer_component_dollar_el: bool,
+    infer_component_dollar_refs: bool,
+    infer_template_dollar_attrs: bool,
+    infer_template_dollar_el: bool,
+    infer_template_dollar_refs: bool,
+    infer_template_dollar_slots: bool,
+    lib: String,
+    strict_v_model: bool,
+}
+
+#[derive(Deserialize)]
+struct RecordedTemplates {
+    file: String,
+    #[serde(default)]
+    templates: Vec<TemplateCall>,
+}
+
+/// Replays one recorded `generateTemplate` call on its template.
+fn replay_template(call: &TemplateCall) -> Value {
+    use codegen::template::generate::{CompilerFlags, TemplateOptions, generate_template};
+
+    let set = |names: &[String]| {
+        names
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashSet<_>>()
+    };
+    let recorded = &call.compiler;
+    let compiler = CompilerFlags {
+        lib: recorded.lib.clone(),
+        check_unknown_props: recorded.check_unknown_props,
+        check_unknown_events: recorded.check_unknown_events,
+        check_unknown_directives: recorded.check_unknown_directives,
+        check_unknown_components: recorded.check_unknown_components,
+        strict_v_model: recorded.strict_v_model,
+        infer_template_dollar_slots: recorded.infer_template_dollar_slots,
+        infer_template_dollar_attrs: recorded.infer_template_dollar_attrs,
+        infer_template_dollar_refs: recorded.infer_template_dollar_refs,
+        infer_template_dollar_el: recorded.infer_template_dollar_el,
+        infer_component_dollar_el: recorded.infer_component_dollar_el,
+        infer_component_dollar_refs: recorded.infer_component_dollar_refs,
+        fallthrough_attributes: recorded.fallthrough_attributes,
+        check_required_fallthrough_attributes: recorded.check_required_fallthrough_attributes,
+        fallthrough_component_names: recorded.fallthrough_component_names.clone(),
+        data_attributes: recorded.data_attributes.clone(),
+        html_attributes: recorded.html_attributes.clone(),
+    };
+    let (imported_components, setup_refs, setup_consts) = (
+        set(&call.imported_components),
+        set(&call.setup_refs),
+        set(&call.setup_consts),
+    );
+    let (setup_bindings, dot_value_bindings, reassert_bindings) = (
+        set(&call.setup_bindings),
+        set(&call.dot_value_bindings),
+        set(&call.reassert_bindings),
+    );
+
+    // The template's tree, as the `vue-template-html` plugin makes it.
+    let parsed_text = template::compile::with_suffix(&call.template);
+    let mut unsupported = None;
+    let root = if call.has_ast {
+        if matches!(call.lang.as_str(), "html" | "md") {
+            let mut parsed = parse(&parsed_text, ParseOptions::template());
+            unsupported = parsed.unsupported;
+            if parsed.poisons_later_parses {
+                unsupported = unsupported.or(Some("the template changes how later files parse"));
+            }
+            unsupported = unsupported.or(template::transform::transform(&mut parsed.root));
+            Some(parsed.root)
+        } else {
+            unsupported = Some("a template in a language other than HTML");
+            None
+        }
+    } else {
+        None
+    };
+    let options = TemplateOptions {
+        template: &call.template,
+        parsed: &parsed_text,
+        is_html: call.lang == "html",
+        is_ts: matches!(call.script_lang.as_str(), "ts" | "tsx"),
+        is_vapor: call.is_vapor,
+        compiler: &compiler,
+        imported_components: &imported_components,
+        setup_refs: &setup_refs,
+        setup_consts: &setup_consts,
+        setup_bindings: &setup_bindings,
+        dot_value_bindings: &dot_value_bindings,
+        reassert_bindings: &reassert_bindings,
+        has_define_slots: call.has_define_slots,
+        props_assign_name: call.props_assign_name.as_deref(),
+        slots_assign_name: call.slots_assign_name.as_deref(),
+        inherit_attrs: call.inherit_attrs,
+        component_name: &call.component_name,
+    };
+    let generated = generate_template(&options, root.as_ref());
+    json!({
+        "codes": dump_template_codes(&generated.codes, &call.template),
+        "generatedTypes": generated.generated_types,
+        "contextAccesses": generated.context_access_names,
+        "dotValueAccesses": generated.dot_value_accesses,
+        "unsupported": unsupported.or(generated.unsupported),
+    })
+}
+
+/// The template's codes in the shape the oracle records them.
+fn dump_template_codes(codes: &[codegen::Code], template: &str) -> Vec<Value> {
+    use codegen::{Code, Source, Verification};
+
+    let map = utf16::Utf16Map::new(template);
+    let mut tokens: Vec<u32> = Vec::new();
+    codes
+        .iter()
+        .map(|code| match code {
+            Code::Text(text) => json!(text),
+            Code::Mapped {
+                text,
+                source,
+                offset,
+                features,
+            } => {
+                let group = features.combine.map(|token| {
+                    tokens
+                        .iter()
+                        .position(|known| *known == token)
+                        .unwrap_or_else(|| {
+                            tokens.push(token);
+                            tokens.len() - 1
+                        })
+                });
+                let verification = match features.verification {
+                    Verification::Off => json!(0),
+                    Verification::On => json!(1),
+                    Verification::NotTs2353OrTs2561 => json!("ts2353"),
+                    Verification::NotTs6133 => json!("ts6133"),
+                    Verification::Stateful => json!("stateful"),
+                };
+                let source = match source {
+                    Source::Template => "template".to_owned(),
+                    Source::Script => "script".to_owned(),
+                    Source::ScriptSetup => "scriptSetup".to_owned(),
+                    Source::Style(index) => format!("style_{index}"),
+                };
+                json!([text, source, map.offset(*offset), verification, group])
+            }
+        })
+        .collect()
+}
+
+fn run_template() -> io::Result<()> {
+    let stdin = io::stdin().lock();
+    let mut stdout = io::BufWriter::new(io::stdout().lock());
+    for line in stdin.lines() {
+        let line = line?;
+        if line.is_empty() {
+            continue;
+        }
+        let recorded: RecordedTemplates = serde_json::from_str(&line)?;
+        let replayed = recorded
+            .templates
+            .iter()
+            .map(replay_template)
+            .collect::<Vec<_>>();
+        serde_json::to_writer(
+            &mut stdout,
+            &json!({ "file": recorded.file, "templates": replayed }),
+        )?;
+        stdout.write_all(b"\n")?;
+    }
+    stdout.flush()
 }
 
 fn run_interpolate() -> io::Result<()> {
@@ -272,8 +488,11 @@ fn main() -> ExitCode {
     let result = match std::env::args().nth(1).as_deref() {
         Some("parse") => run_parse(),
         Some("interpolate") => run_interpolate(),
+        Some("template") => run_template(),
         _ => {
-            eprintln!("usage: vue-check-codegen <parse|interpolate> < input.jsonl > output.jsonl");
+            eprintln!(
+                "usage: vue-check-codegen <parse|interpolate|template> < input.jsonl > output.jsonl"
+            );
             return ExitCode::from(2);
         }
     };

@@ -39,14 +39,21 @@ const TAGS = [
 	'my-el', 'svg', 'math', 'foreignObject', 'desc', 'textarea', 'title', 'pre', 'script', 'style', 'table', 'tr', 'td',
 	'annotation-xml', 'mi', 'mtext', 'Transition', 'keep-alive', 'teleport', 'DIV', 'tEmplate', 'é-tag', 'x1', 'x_y', 'button'
 ];
-const WORDS = ['a', 'foo', 'bar', 'item', 'items', 'index', 'key', 'value', 'x.y', 'fn()', "'s'", '1 + 2', 'a ? b : c', 'é', '😀', 'in', 'of', ''];
+/* With --expressions=valid, every expression is valid code, so that the
+ * template codegen is reached; without it, most aren't, for the parser. */
+const valid = option('expressions', 'any') === 'valid';
+const WORDS = valid
+	? ['a', 'foo', 'bar', 'item', 'items', 'index', 'key', 'value', 'x.y', 'fn()', "'s'", '1 + 2', 'a ? b : c', 'foo.bar', '[a, b]', '{ a, b: 1 }', 'fn(a)', '$event', 'a = 1', 'a => a', 'Foo']
+	: ['a', 'foo', 'bar', 'item', 'items', 'index', 'key', 'value', 'x.y', 'fn()', "'s'", '1 + 2', 'a ? b : c', 'é', '😀', 'in', 'of', ''];
 const SPACE = [' ', '  ', '\n', '\r\n', '\t', '\n  ', ' \n ', '\f', ''];
 const ENTITIES = [
 	'&amp;', '&lt;', '&gt;', '&quot;', '&nbsp;', '&amp', '&lt', '&notit;', '&not', '&#65;', '&#x41;', '&#X41', '&#128;', '&#0;',
 	'&#x1F600;', '&#xD800;', '&#99999999;', '&#;', '&#x;', '&unknown;', '&', '&&', '&Afr;', '&NotEqualTilde;', '&amp=', '&ampx',
 	'&copy', '&copy;', '&copyx', '&CounterClockwiseContourIntegral;', '&CounterClockwiseContourIntegra', '&a', '&#', '&#x'
 ];
-const FOR = [
+const FOR = valid
+	? ['item in items', '(item, index) in items', '(value, key, index) of object', '{ a, b } in list', '({ a, b = 1 }, i) in list', '[a, , b] in list', 'n in 10', 'item of items.filter(x => x)', '(a) in b', '{ a: { b }, ...rest } in foo', 'item in item']
+	: [
 	'item in items', '(item, index) in items', '(value, key, index) of object', '{ a, b } in list', '({ a, b }, i) in list',
 	'[a, , b] in list', ' x   in   y ', 'in', 'a in', ' in b', 'a in b in c', 'n in 10', '(a,b,c,d) in e', 'item of items.filter(x => x in y)',
 	'é in 😀', '(a) in b', '((a)) in b', 'a, in b', ',a in b', '(a, b]) in c', 'item\nin\nitems', 'a  of  b', 'ofx in y', 'x iny', '', '&amp; in &lt;', 'é in a&amp;b'
@@ -54,7 +61,7 @@ const FOR = [
 const space = () => pick(SPACE);
 const word = () => pick(WORDS);
 const entity = () => pick(ENTITIES);
-const value = () => several(() => (chance(0.25) ? entity() : chance(0.2) ? space() : word()), 4);
+const value = () => (valid ? word() : several(() => (chance(0.25) ? entity() : chance(0.2) ? space() : word()), 4));
 const quoted = (text: string) => {
 	const kind = below(10);
 	if (kind < 6) return `"${text.replaceAll('"', "'")}"`;
@@ -82,7 +89,7 @@ const attribute = () => {
 };
 const attributes = () => several(() => (chance(0.9) ? space() || ' ' : '') + attribute(), 4);
 const interpolation = () =>
-	pick(['{{ ', '{{', '{{  \n', '{ {', '{{{']) + pick([word(), value(), '', '  ', 'a }', '} }', 'a &amp; b', "'}}'", 'a\nb']) + pick([' }}', '}}', ' }}', '}', '', '}}}', ' }} }}']);
+	pick(['{{ ', '{{', '{{  \n', '{ {', '{{{']) + (valid ? pick([word(), word(), '', ' ']) : pick([word(), value(), '', '  ', 'a }', '} }', 'a &amp; b', "'}}'", 'a\nb'])) + pick([' }}', '}}', ' }}', '}', '', '}}}', ' }} }}']);
 const comment = () =>
 	pick([
 		`<!--${value()}-->`, '<!-->', '<!--->', '<!---->', `<!-- ${word()} --->`, `<!--${word()}`, '<!-', '<!', `<!DOCTYPE ${word()}>`, `<![CDATA[${value()}]]>`,

@@ -58,9 +58,36 @@ pub fn camelize(text: &str) -> String {
     camelized
 }
 
+/// `@vue/shared`'s `capitalize`: the first UTF-16 unit in upper case. Half of
+/// a surrogate pair has no upper case, so a character outside the basic
+/// plane stays as it is.
+pub fn capitalize(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) if first.len_utf16() == 1 => first.to_uppercase().chain(chars).collect(),
+        _ => text.to_owned(),
+    }
+}
+
+/// `@vue/shared`'s `hyphenate`: `/\B([A-Z])/g` to `-$1`, then lower case. An
+/// upper-case letter gets a hyphen when the character before it is a word
+/// character.
+pub fn hyphenate(text: &str) -> String {
+    let mut hyphenated = String::with_capacity(text.len() + 4);
+    let mut previous_is_word = false;
+    for char in text.chars() {
+        if char.is_ascii_uppercase() && previous_is_word {
+            hyphenated.push('-');
+        }
+        hyphenated.push(char);
+        previous_is_word = char.is_ascii_alphanumeric() || char == '_';
+    }
+    hyphenated.to_lowercase()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{camelize, index_of, trim};
+    use super::{camelize, capitalize, hyphenate, index_of, trim};
 
     #[test]
     fn trims_what_javascript_trims() {
@@ -81,5 +108,16 @@ mod tests {
         assert_eq!(camelize("a--b"), "a-B");
         assert_eq!(camelize("-a-"), "A-");
         assert_eq!(camelize("x-1-_y-é"), "x1_y-é");
+    }
+
+    #[test]
+    fn capitalizes_and_hyphenates() {
+        assert_eq!(capitalize("foo"), "Foo");
+        assert_eq!(capitalize("ßa"), "SSa");
+        assert_eq!(capitalize(""), "");
+        assert_eq!(hyphenate("fooBarBaz"), "foo-bar-baz");
+        assert_eq!(hyphenate("FooBar"), "foo-bar");
+        assert_eq!(hyphenate("a-B"), "a-b");
+        assert_eq!(hyphenate("aBC"), "a-b-c");
     }
 }

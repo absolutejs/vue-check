@@ -48,7 +48,7 @@ fn at(offset: u32) -> usize {
 /// Parses a template expression as the original does (`getTypeScriptAST`: a
 /// TypeScript file) and hands its tree to `read`. `None` when it has a
 /// syntax error, which TypeScript recovers from in its own way.
-fn with_program<T>(text: &str, read: impl FnOnce(&Program<'_>) -> T) -> Option<T> {
+pub(super) fn with_program<T>(text: &str, read: impl FnOnce(&Program<'_>) -> T) -> Option<T> {
     let allocator = Allocator::default();
     // TypeScript's parser takes a `return` anywhere (`@click="if (done) return; next()"`).
     let options = ParseOptions {
@@ -340,7 +340,12 @@ fn for_each_identifiers(
     // parentheses, a function's braces or nothing at all need no expression.
     if crate::js::trim(code).is_empty() {
         if prefix == "(" {
-            return vec![plain("")];
+            // Unless a scope has declared a name that is empty.
+            return if context.should_identifier_skipped("") {
+                Vec::new()
+            } else {
+                vec![plain("")]
+            };
         }
         if !(prefix.is_empty() || prefix.ends_with('(') || prefix.ends_with('{')) {
             context.give_up("an empty template expression in a place the port has no rule for");
@@ -668,7 +673,13 @@ pub fn generate_identifier(
     } else if options.setup_bindings.contains(name) {
         // The first pass records the narrowing accesses here; the second
         // reads them back as `dot_value_bindings`.
-        context.access_variable(source, name, Some(start), in_type_query || is_narrowing);
+        context.access_variable(
+            source,
+            name,
+            Some(start),
+            in_type_query || is_narrowing,
+            None,
+        );
         if in_type_query || options.dot_value_bindings.contains(name) {
             out.extend(codes);
             dot_value(context, out);
@@ -689,7 +700,7 @@ pub fn generate_identifier(
         if context.dollar_vars.contains(name) {
             out.push("__VLS_dollars".into());
         } else {
-            context.access_variable(source, name, Some(start), false);
+            context.access_variable(source, name, Some(start), false, None);
             out.push("__VLS_ctx".into());
         }
         out.push(".".into());

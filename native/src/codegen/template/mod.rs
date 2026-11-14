@@ -2,4 +2,5 @@
 
 pub mod binding_references;
 pub mod context;
+pub mod generate;
 pub mod interpolation;
