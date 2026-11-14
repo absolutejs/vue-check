@@ -27,6 +27,12 @@ if gh release view "$TAG" -R "$REPO" --json isDraft -q .isDraft 2>/dev/null | gr
   die "$TAG is already published"
 fi
 
+# What is published is this checkout's src, so it must be the commit the
+# binaries were built from.
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && [ "$(git rev-list -n1 "$TAG")" != "$(git rev-parse HEAD)" ]; then
+  die "$TAG is not this commit: bump the version in package.json and native/Cargo.toml"
+fi
+
 if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   git tag -a "$TAG" -m "vue-check $VERSION"
   git push -q origin "$TAG"
