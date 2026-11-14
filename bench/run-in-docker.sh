@@ -18,6 +18,8 @@ mkdir -p "$tool/bench/results"
 memory=${MEMORY:-10g}
 # A project copy can borrow the original's node_modules (MODULES=<path>):
 # mounted read-only over an empty node_modules folder in the copy.
+# VUE_CHECK_VERIFY_SPANS=1 has vue-check check its mapping shortcut against
+# the full computation on every error (src/cli.ts).
 modules=()
 if [ -n "${MODULES:-}" ]; then
 	[ -L "$project/node_modules" ] && rm "$project/node_modules"
@@ -25,7 +27,7 @@ if [ -n "${MODULES:-}" ]; then
 	modules=(-v "$(realpath "$MODULES")":/project/node_modules:ro)
 fi
 docker run --rm --network none --memory "$memory" --memory-swap "$memory" \
-	--user "$(id -u):$(id -g)" -e HOME=/tmp \
+	--user "$(id -u):$(id -g)" -e HOME=/tmp -e VUE_CHECK_VERIFY_SPANS="${VUE_CHECK_VERIFY_SPANS:-}" \
 	-v "$mount":/project \
 	"${modules[@]}" \
 	-v "$tool":/tool:ro \

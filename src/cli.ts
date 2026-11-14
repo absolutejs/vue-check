@@ -141,6 +141,8 @@ const fileOf = (rawFile: string) => relative(root, resolve(root, rawFile));
  * regenerated and decided by Volar itself, as vue-tsc would. */
 const knownCodes = new Set(codegenResult.knownCodes);
 const maps: Record<string, SourceMap> = {};
+/* The maps made again by Volar itself (below): their rules are its functions. */
+const liveMaps = new Set<SourceMap>();
 const regenerate = new Set<string>();
 for (const line of lines) {
 	const match = ERROR_LINE.exec(line);
@@ -156,7 +158,10 @@ if (regenerate.size > 0) {
 	const live = (await import('./generate')).generate({ only: sources, outDir, root, tsconfig }).maps;
 	for (const file of regenerate) {
 		const map = live[file];
-		if (map) maps[file] = map;
+		if (map) {
+			maps[file] = map;
+			liveMaps.add(map);
+		}
 	}
 }
 
@@ -281,11 +286,23 @@ const spanAt = (file: string, text: string, position: number, code: string) => {
  * with its diagnostic filter (shouldReportDiagnostics, or the same rules as
  * data), as Volar's transformDiagnostic calls it for vue-tsc.
  */
+const generatedTexts = new Map<string, string>();
+const generatedText = (file: string) => {
+	let text = generatedTexts.get(file);
+	if (text === undefined) {
+		text = readFileSync(join(root, file), 'utf8');
+		generatedTexts.set(file, text);
+	}
+
+	return text;
+};
+/* VUE_CHECK_VERIFY_SPANS: also do what the shortcut below skips, and fail if
+ * the two disagree. For the benchmark. */
+const verifySpans = Boolean(process.env.VUE_CHECK_VERIFY_SPANS);
 const sourcePosition = (file: string, map: SourceMap, line: number, column: number, code: string) => {
-	const generated = readFileSync(join(root, file), 'utf8');
+	const generated = generatedText(file);
 	const position = offsetOf(generated, line, column);
 	const start = position - map.shift;
-	const end = start + spanAt(file, generated, position, code);
 	let volar = volarMaps.get(map);
 	if (!volar) {
 		const SourceMapClass = volarSourceMap();
@@ -300,12 +317,36 @@ const sourcePosition = (file: string, map: SourceMap, line: number, column: numb
 		);
 		volarMaps.set(map, volar);
 	}
-	for (const [sourceStart] of volar.toSourceRange(start, end, true, (data) => map.shouldReport(data, code)))
-		return positionOf(readFileSync(join(root, map.source), 'utf8'), sourceStart);
+	const shouldReport = (data: unknown) => map.shouldReport(data, code);
+	const mapped = (end: number) => {
+		for (const [sourceStart] of volar.toSourceRange(start, end, true, shouldReport)) return sourceStart;
 
-	return null;
+		return null;
+	};
+	/* Volar maps a range by where it starts: the mappings that hold the start
+	 * and report this code, and then the end through the same mapping or
+	 * another. With no such mapping for the start there is none for the range,
+	 * whatever its length: most of what a checker reports in generated code is
+	 * in Vue's scaffolding, which maps nowhere, and the error's length (a
+	 * parse of the file with TypeScript) isn't needed to know it. Not for a
+	 * map whose rules are Volar's own functions, which count their calls. */
+	if (!liveMaps.has(map) && mapped(start) === null) {
+		if (verifySpans && mapped(start + spanAt(file, generated, position, code)) !== null)
+			throw new Error(`vue-check: ${file}(${line},${column}) TS${code} maps by its range and not by its start`);
+
+		return null;
+	}
+	const sourceStart = mapped(start + spanAt(file, generated, position, code));
+
+	return sourceStart === null ? null : positionOf(readFileSync(join(root, map.source), 'utf8'), sourceStart);
 };
 
+/* Errors only a type check finds (an unused name, an unknown one, a type that
+ * doesn't fit). A checker that behaves like tsc reports syntax errors alone
+ * when there is one, so one of these means it found none: nothing it printed
+ * needs asking TypeScript's parser whether it is a syntax error. */
+const TYPE_CHECK_ONLY = new Set(['TS2304', 'TS2322', 'TS2339', 'TS2344', 'TS2345', 'TS6133', 'TS6196']);
+const typeChecked = lines.some((line) => TYPE_CHECK_ONLY.has(ERROR_LINE.exec(line)?.[5] ?? ''));
 let errors = 0;
 /* Every error the checker printed, before mapping drops vue-tsc's hidden ones. */
 let reported = 0;
@@ -344,8 +385,8 @@ for (const line of lines) {
 	// Not where vue-tsc reports it: the codegen's own scaffolding.
 	if (!position) {
 		if (map && /^TS8\d{3}$/.test(code ?? '')) droppedJavaScriptGrammar = true;
-		if (map && !hiddenSyntaxErrors.has(map.source)) {
-			const generated = readFileSync(join(root, file), 'utf8');
+		if (map && !typeChecked && !hiddenSyntaxErrors.has(map.source)) {
+			const generated = generatedText(file);
 			const syntax = syntaxErrorAt(file, generated, offsetOf(generated, Number(rawLine), Number(rawColumn)), (code ?? '').replace('TS', ''));
 			if (syntax)
 				hiddenSyntaxErrors.set(map.source, {
