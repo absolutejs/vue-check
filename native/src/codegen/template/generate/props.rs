@@ -387,6 +387,27 @@ impl<'a> Generator<'a> {
             let codes = self.buffered(|generator| {
                 generator.camelized(source, exp_start, WITHOUT_HIGHLIGHT_AND_COMPLETION);
             });
+            if self.before_3_3_12() {
+                // Before 3.3.12: as an identifier of an expression is read.
+                if self.ctx.should_identifier_skipped(&variable_name) {
+                    self.out.extend(codes);
+                } else if self.options.setup_refs.contains(&variable_name) {
+                    self.out.extend(codes);
+                    self.text(".value");
+                } else {
+                    self.ctx.access_variable(
+                        Source::Template,
+                        &variable_name,
+                        Some(exp_start),
+                        false,
+                        None,
+                    );
+                    self.text("__VLS_ctx");
+                    self.text(".");
+                    self.out.extend(codes);
+                }
+                return;
+            }
             let options = self.identifier_options();
             generate_identifier(
                 &options,

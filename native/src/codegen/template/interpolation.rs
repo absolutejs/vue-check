@@ -333,6 +333,7 @@ fn for_each_identifiers(
     text: &str,
     prefix: &str,
     in_narrowing: bool,
+    version: CoreVersion,
 ) -> Vec<Identifier> {
     let plain = |name: &str| Identifier {
         name: name.to_owned(),
@@ -367,7 +368,11 @@ fn for_each_identifiers(
         };
     }
     let Some(found) = with_program(text, |program| {
-        references(program, text, context, in_narrowing)
+        if version < CoreVersion::V3_3_12 {
+            super::binding_references_old::references(program, text, context)
+        } else {
+            references(program, text, context, in_narrowing)
+        }
     }) else {
         context.give_up("a template expression has a syntax error");
         return Vec::new();
@@ -387,6 +392,86 @@ fn for_each_identifiers(
         .collect()
 }
 
+/// `generateInterpolation` as 3.3.11 and before have it: the text between
+/// the identifiers as it is, a `<script setup>` ref read with `.value`, and
+/// every other identifier read from the context.
+#[expect(clippy::too_many_arguments, reason = "the original's own parameters")]
+fn generate_interpolation_3_3_11(
+    options: &IdentifierOptions,
+    context: &mut TemplateContext,
+    source: Source,
+    features: Features,
+    code: &str,
+    start: usize,
+    prefix: &str,
+    suffix: &str,
+    out: &mut Vec<Code>,
+) {
+    let mapped = |text: &str, offset: usize| Code::Mapped {
+        text: text.to_owned(),
+        source,
+        offset,
+        features,
+    };
+    if !prefix.is_empty() {
+        out.push(prefix.into());
+    }
+    let text = format!("{prefix}{code}{suffix}");
+    let found = for_each_identifiers(context, code, &text, prefix, false, options.core);
+    let mut previous_end = 0;
+    for Identifier {
+        name, offset, kind, ..
+    } in found
+    {
+        let end = offset + name.len();
+        if kind == ReferenceKind::Shorthand {
+            out.push(mapped(
+                code.get(previous_end..end).unwrap_or(""),
+                start + previous_end,
+            ));
+            out.push(": ".into());
+        } else if previous_end < offset {
+            out.push(mapped(
+                code.get(previous_end..offset).unwrap_or(""),
+                start + previous_end,
+            ));
+        }
+        if options.setup_refs.contains(&name) {
+            out.push(mapped(&name, start + offset));
+            out.push(".value".into());
+        } else {
+            let token = context.token();
+            let boundary = Boundary::start(
+                out,
+                token,
+                source,
+                start + offset,
+                start + end,
+                Features::new(Verification::On),
+            );
+            if context.dollar_vars.contains(&name) {
+                out.push("__VLS_dollars".into());
+            } else {
+                context.access_variable(source, &name, Some(start + offset), false, None);
+                out.push("__VLS_ctx".into());
+            }
+            out.push(".".into());
+            out.push(mapped(&name, start + offset));
+            out.push(boundary.end());
+        }
+        previous_end = end;
+    }
+    if previous_end < code.len() {
+        out.push(mapped(
+            code.get(previous_end..).unwrap_or(""),
+            start + previous_end,
+        ));
+    }
+    if !suffix.is_empty() {
+        out.push(suffix.into());
+    }
+}
+
 /// `generateInterpolation`.
 #[expect(clippy::too_many_arguments, reason = "the original's own parameters")]
 pub fn generate_interpolation(
@@ -401,6 +486,12 @@ pub fn generate_interpolation(
     in_narrowing: bool,
     out: &mut Vec<Code>,
 ) {
+    if options.core < CoreVersion::V3_3_12 {
+        generate_interpolation_3_3_11(
+            options, context, source, features, code, start, prefix, suffix, out,
+        );
+        return;
+    }
     if !prefix.is_empty() {
         out.push(prefix.into());
     }
@@ -439,7 +530,7 @@ pub fn generate_interpolation(
         .collect();
     marks.sort_by_key(|(offset, ..)| *offset);
 
-    let found = for_each_identifiers(context, code, &text, prefix, in_narrowing);
+    let found = for_each_identifiers(context, code, &text, prefix, in_narrowing, options.core);
 
     let mut interpolation = Interpolation {
         options,

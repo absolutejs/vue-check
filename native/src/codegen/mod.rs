@@ -28,6 +28,9 @@ pub enum Source {
 /// written as that one does.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CoreVersion {
+    V3_3_9,
+    V3_3_10,
+    V3_3_11,
     V3_3_12,
     V3_3_13,
     #[default]
@@ -38,6 +41,9 @@ impl CoreVersion {
     /// The version by its number, if the port reproduces it.
     pub fn parse(version: &str) -> Option<Self> {
         match version {
+            "3.3.9" => Some(Self::V3_3_9),
+            "3.3.10" => Some(Self::V3_3_10),
+            "3.3.11" => Some(Self::V3_3_11),
             "3.3.12" => Some(Self::V3_3_12),
             "3.3.13" => Some(Self::V3_3_13),
             "3.3.14" => Some(Self::V3_3_14),

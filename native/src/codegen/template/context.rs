@@ -227,6 +227,16 @@ impl TemplateContext {
         if self.hoist_vars.is_empty() {
             return;
         }
+        if self.core < crate::codegen::CoreVersion::V3_3_12 {
+            // Before 3.3.12: each followed by a comma, under `@ts-ignore`.
+            out.push(format!("// @ts-ignore{NEW_LINE}").into());
+            out.push("var ".into());
+            for (original, hoisted) in &self.hoist_vars {
+                out.push(format!("{hoisted} = {original}, ").into());
+            }
+            out.push(END_OF_LINE.into());
+            return;
+        }
         out.push("var ".into());
         for (index, (original, hoisted)) in self.hoist_vars.iter().enumerate() {
             if index > 0 {
@@ -366,7 +376,8 @@ impl TemplateContext {
         let mut accesses = std::mem::take(&mut self.context_accesses);
         for (name, sources) in &mut accesses {
             for accessed in sources {
-                if !is_reserved_word(name) {
+                // 3.3.12 left the reserved words out.
+                if self.core < crate::codegen::CoreVersion::V3_3_12 || !is_reserved_word(name) {
                     for (offset, source_name) in &accessed.offsets {
                         // `codeFeatures.importCompletionOnly`
                         if self.core.is_3_3_14() {

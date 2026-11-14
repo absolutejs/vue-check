@@ -67,6 +67,9 @@ pub struct ScriptOptions<'a> {
     pub setup_bindings: &'a HashSet<String>,
     pub local_components: &'a [String],
     pub local_directives: &'a [String],
+    /// Before 3.3.12: the `<script setup>` bindings the template and the
+    /// styles read (`getSetupExposed`), in the original's order.
+    pub exposed: &'a [String],
     pub dot_value_bindings: &'a [String],
 }
 
@@ -173,6 +176,11 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 3.3.11 and before: the codegen 3.3.12 rewrote.
+    fn before_3_3_12(&self) -> bool {
+        self.options.core < CoreVersion::V3_3_12
+    }
+
     /// `ctx.localTypes.generate()`: the helpers used, in the order they were.
     fn local_types(&mut self) {
         let mut index = 0;
@@ -197,7 +205,14 @@ impl<'a> Generator<'a> {
             if local_type == LocalType::WithDefaults {
                 self.local_type(LocalType::PrettifyLocal);
             }
-            self.text(text.replace('\u{1}', self.options.lib));
+            let mut text = text.replace('\u{1}', self.options.lib);
+            if self.before_3_3_12() {
+                // The mapped types 3.3.12 narrowed to string keys.
+                text = text
+                    .replace("[K in keyof P & string]", "[K in keyof Pick<P, keyof P>]")
+                    .replace("[K in keyof T & string]-?", "[K in keyof T]-?");
+            }
+            self.text(text);
         }
     }
 
@@ -516,7 +531,13 @@ impl<'a> Generator<'a> {
                 offset: parameters.offset,
                 features: ALL,
             });
-            if !js::trim_end(&parameters.text).ends_with(',') {
+            // 3.3.10 looks past the space after the last parameter.
+            let written = if options.core < CoreVersion::V3_3_10 {
+                parameters.text.as_str()
+            } else {
+                js::trim_end(&parameters.text)
+            };
+            if !written.ends_with(',') {
                 self.text(",");
             }
             self.text(">");
@@ -738,7 +759,7 @@ impl<'a> Generator<'a> {
         };
 
         for model in &ranges.define_model {
-            if let Some(arg) = model.default_props_arg {
+            if let Some(arg) = model.default_props_arg.filter(|_| !self.before_3_3_12()) {
                 let mut codes = vec![Self::text_code(": ")];
                 match &ranges.define_props {
                     Some(props) if props.call.call.type_arg.is_some() => {
@@ -786,7 +807,7 @@ impl<'a> Generator<'a> {
                 "__VLS_slots",
                 "__VLS_Slots",
             );
-            if slots.name.is_none() {
+            if slots.name.is_none() && !self.before_3_3_12() {
                 transforms.push(Self::insert(
                     slots.statement.end,
                     vec![Self::text_code(format!(
@@ -994,6 +1015,9 @@ impl<'a> Generator<'a> {
         }
         self.section(Source::ScriptSetup, start, end, ALL);
 
+        if self.before_3_3_12() {
+            self.macros_3_3_11();
+        }
         self.models(ranges);
         self.public_props(ranges);
         self.template(template_self_type);
@@ -1118,7 +1142,9 @@ impl<'a> Generator<'a> {
             self.text("const __VLS_defaults = ");
             self.section(Source::ScriptSetup, arg.start, arg.end, NAVIGATION);
             self.text(END_OF_LINE);
-            self.text(format!("void __VLS_defaults{END_OF_LINE}"));
+            if !self.before_3_3_12() {
+                self.text(format!("void __VLS_defaults{END_OF_LINE}"));
+            }
         }
         let mut prop_types: Vec<String> = Vec::new();
         if options.jsx_slots && self.has_slots_type() {
@@ -1135,7 +1161,8 @@ impl<'a> Generator<'a> {
             .define_props
             .as_ref()
             .is_some_and(|props| props.call.call.arg.is_some());
-        let used = options.script_setup_generic.is_some()
+        let used = self.before_3_3_12()
+            || options.script_setup_generic.is_some()
             || options.target < 3.6
             || (options.target >= 3.5 && !has_arg);
         if !prop_types.is_empty() && used {
@@ -1201,7 +1228,9 @@ impl<'a> Generator<'a> {
                 self.text(code);
             }
             self.text(format!("}}{END_OF_LINE}"));
-            self.text(format!("void __VLS_defaultModels{END_OF_LINE}"));
+            if !self.before_3_3_12() {
+                self.text(format!("void __VLS_defaultModels{END_OF_LINE}"));
+            }
         }
         self.type_alias("__VLS_ModelProps", |generator| {
             generator.text(format!("{{{NEW_LINE}"));
@@ -1418,6 +1447,17 @@ impl<'a> Generator<'a> {
     /// the values and types it reads and gives back.
     fn template(&mut self, self_type: Option<&str>) {
         let options = self.options;
+        if self.before_3_3_12() {
+            // Before 3.3.12: the bindings the template reads, as a type of
+            // the context; the template's code follows as it is.
+            self.setup_exposed_3_3_11();
+            self.template_ctx(self_type);
+            self.template_components();
+            self.template_directives();
+            let codes = std::mem::take(&mut self.template_and_style_codes);
+            self.out.extend(codes);
+            return;
+        }
         self.template_ctx(self_type);
         self.template_components();
         self.template_directives();
@@ -1546,9 +1586,57 @@ impl<'a> Generator<'a> {
             ));
             exps.push(Self::text_code(self.as_type(&props)));
         }
+        if self.generated_types.contains(&"__VLS_SetupExposed") {
+            exps.push(Self::text_code(self.as_type("__VLS_SetupExposed")));
+        }
         self.text("const __VLS_ctx = ");
         self.spread_merge(exps);
         self.text(END_OF_LINE);
+    }
+
+    /// `generateMacros` before 3.3.12: every macro declared, apart from a
+    /// name the template reads from `<script setup>`.
+    fn macros_3_3_11(&mut self) {
+        let options = self.options;
+        if options.target < 3.3 {
+            return;
+        }
+        self.text(format!("// @ts-ignore{NEW_LINE}"));
+        self.text("declare const { ");
+        for name in [
+            "defineProps",
+            "defineSlots",
+            "defineEmits",
+            "defineExpose",
+            "defineModel",
+            "defineOptions",
+            "withDefaults",
+        ] {
+            if !options.exposed.iter().any(|exposed| exposed == name) {
+                self.text(format!("{name}, "));
+            }
+        }
+        self.text(format!("}}: typeof import('{}'){END_OF_LINE}", options.lib));
+    }
+
+    /// `generateSetupExposed` before 3.3.12: the type of the bindings the
+    /// template reads from `<script setup>`.
+    fn setup_exposed_3_3_11(&mut self) {
+        let options = self.options;
+        if options.exposed.is_empty() {
+            return;
+        }
+        self.generated_types.push("__VLS_SetupExposed");
+        self.text(format!(
+            "type __VLS_SetupExposed = import('{}').ShallowUnwrapRef<{{{NEW_LINE}",
+            options.lib
+        ));
+        for name in options.exposed {
+            self.text(format!("{name}: typeof "));
+            self.text(name.clone());
+            self.text(END_OF_LINE);
+        }
+        self.text(format!("}}>{END_OF_LINE}"));
     }
 
     /// `generateExposedType`: the setup bindings a template can use as
@@ -1570,7 +1658,11 @@ impl<'a> Generator<'a> {
         let options = self.options;
         let lib = options.lib;
         let mut types: Vec<String> = Vec::new();
-        if !options.local_components.is_empty() {
+        if self.before_3_3_12() {
+            if self.generated_types.contains(&"__VLS_SetupExposed") {
+                types.push("__VLS_SetupExposed".to_owned());
+            }
+        } else if !options.local_components.is_empty() {
             types.push(self.exposed_type(options.local_components));
         }
         let components = options
@@ -1616,7 +1708,11 @@ impl<'a> Generator<'a> {
     fn template_directives(&mut self) {
         let options = self.options;
         let mut types: Vec<String> = Vec::new();
-        if !options.local_directives.is_empty() {
+        if self.before_3_3_12() {
+            if self.generated_types.contains(&"__VLS_SetupExposed") {
+                types.push("__VLS_SetupExposed".to_owned());
+            }
+        } else if !options.local_directives.is_empty() {
             types.push(self.exposed_type(options.local_directives));
         }
         let directives = options

@@ -20,6 +20,8 @@ pub struct Style {
     pub module: Option<(String, usize)>,
     pub bindings: Vec<StyleText>,
     pub class_names: Vec<StyleText>,
+    /// Before 3.3.12: `module`'s value where it has one, empty or not.
+    pub module_written: Option<(String, usize)>,
     /// What its `@import`s name.
     pub imports: Vec<StyleText>,
     /// `<style src="...">`: the file, and where it is named.
@@ -56,6 +58,8 @@ pub struct StyleOptions<'a> {
 pub struct GeneratedStyle {
     pub codes: Vec<Code>,
     pub generated_types: Vec<String>,
+    /// `contextAccesses.keys()`.
+    pub context_access_names: Vec<String>,
     pub dot_value_accesses: Vec<String>,
     pub unsupported: Option<&'static str>,
 }
@@ -79,6 +83,13 @@ pub fn generate_style(options: &StyleOptions, first_token: u32) -> GeneratedStyl
     };
     generator.ctx.core = options.core;
     generator.ctx.open_scope();
+    let old = options.core < crate::codegen::CoreVersion::V3_3_12;
+    if old {
+        // Before 3.3.12 a constant of `<script setup>` is a name in scope.
+        for name in options.setup_consts {
+            generator.ctx.declare(name);
+        }
+    }
     generator.scoped_classes();
     generator.modules();
     generator.css_vars();
@@ -86,6 +97,7 @@ pub fn generate_style(options: &StyleOptions, first_token: u32) -> GeneratedStyl
     GeneratedStyle {
         codes: generator.out,
         generated_types: generator.ctx.generated_types.clone(),
+        context_access_names: generator.ctx.context_access_names(),
         dot_value_accesses: generator.ctx.dot_value_accesses.clone(),
         unsupported: generator.ctx.unsupported,
     }
@@ -226,7 +238,7 @@ impl Generator<'_> {
                 }
             }
         });
-        if options.is_ts {
+        if options.is_ts && options.core >= crate::codegen::CoreVersion::V3_3_12 {
             // A reference in a JSDoc comment isn't a use (TS6196).
             self.text(format!(
                 "void ({{}} as __VLS_StyleScopedClasses){END_OF_LINE}"
@@ -290,7 +302,16 @@ impl Generator<'_> {
         self.type_alias("__VLS_StyleModules", |generator| {
             generator.text(format!("{{{NEW_LINE}"));
             for (index, style, (name, offset)) in &modules {
-                if name.is_empty() {
+                if options.core < crate::codegen::CoreVersion::V3_3_12 {
+                    // Before 3.3.12: the default name as it is, any other
+                    // for an editor alone.
+                    match &style.module_written {
+                        None => generator.text("$style"),
+                        Some((written, offset)) => {
+                            generator.mapped(written.clone(), Source::Main, *offset, NAVIGATION);
+                        }
+                    }
+                } else if name.is_empty() {
                     generator.mapped(
                         "$style",
                         Source::Main,

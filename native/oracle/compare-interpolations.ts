@@ -42,7 +42,8 @@ for (const expected of lines('oracle.jsonl')) {
 			continue;
 		}
 		const wanted = JSON.stringify({ accesses: call.accesses, codes: call.codes });
-		const got = JSON.stringify({ accesses: actual?.accesses, codes: actual?.codes });
+		/* A version that keeps no log of the names read records null: only the code is compared. */
+		const got = JSON.stringify({ accesses: call.accesses === null ? null : actual?.accesses, codes: actual?.codes });
 		if (wanted === got) same += 1;
 		else if (call.typescriptErrors > 0) {
 			/* Code TypeScript rejects and the native parser accepts: the two then

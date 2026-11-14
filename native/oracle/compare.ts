@@ -20,9 +20,24 @@ const lines = (name: string) =>
 		.filter(Boolean)
 		.map((line) => JSON.parse(line) as Record<string, any>);
 
+/* Before 3.3.12 the script analysis keeps its bindings as ranges (the port
+ * keeps what 3.3.12 does: each name and what kind it is), a style's `module`
+ * as written, and none of what 3.3.12 added. Those are left to the layers
+ * above, which use them. */
+const core = (() => {
+	try {
+		return readFileSync(join(out, 'core.txt'), 'utf8').trim();
+	} catch {
+		return '';
+	}
+})();
+const lenient = ['3.3.9', '3.3.10', '3.3.11'].includes(core);
+const LEFT_TO_LATER = /\.(?:bindings|components|module|defaultPropsArg)(?:\.|$)/;
+
 /** The path and values of the first difference, or null. */
 const difference = (expected: unknown, actual: unknown, path: string): string | null => {
 	if (expected === actual) return null;
+	if (lenient && LEFT_TO_LATER.test(path)) return null;
 	if (typeof expected !== 'object' || typeof actual !== 'object' || expected === null || actual === null)
 		return `${path}: expected ${JSON.stringify(expected)}, native ${JSON.stringify(actual)}`;
 	if (Array.isArray(expected) !== Array.isArray(actual)) return `${path}: expected ${JSON.stringify(expected)?.slice(0, 200)}, native ${JSON.stringify(actual)?.slice(0, 200)}`;

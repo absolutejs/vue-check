@@ -43,7 +43,11 @@ impl Generator<'_> {
                 // A vapor directive is called with a getter of its value.
                 let boundary = self.boundary(start, end, VERIFICATION);
                 self.directive_identifier(directive);
-                self.text("(__VLS_nonNull(null), ");
+                self.text(if self.before_3_3_12() {
+                    "(null!, "
+                } else {
+                    "(__VLS_nonNull(null), "
+                });
                 self.directive_value(directive, false);
                 self.directive_arg(directive, false);
                 self.modifiers(directive, "modifiers", false);
@@ -60,15 +64,19 @@ impl Generator<'_> {
                     "import('{}').ObjectDirective",
                     self.options.compiler.lib
                 ));
+                let old = self.before_3_3_12();
                 self.text(format!(
-                    ", {directive_type})(__VLS_nonNull(null), {{ ...__VLS_directiveBindingRestFields, "
+                    ", {directive_type})({}, {{ ...__VLS_directiveBindingRestFields, ",
+                    if old { "null!" } else { "__VLS_nonNull(null)" }
                 ));
                 self.directive_arg(directive, true);
                 self.modifiers(directive, "modifiers", true);
                 self.directive_value(directive, true);
-                self.text(format!(
-                    "}},{NEW_LINE}__VLS_nonNull(null), __VLS_nonNull(null))"
-                ));
+                self.text(if old {
+                    "}, null!, null!)".to_owned()
+                } else {
+                    format!("}},{NEW_LINE}__VLS_nonNull(null), __VLS_nonNull(null))")
+                });
                 self.out.push(boundary.end());
                 self.text(END_OF_LINE);
             } else {

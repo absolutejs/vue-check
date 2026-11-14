@@ -310,6 +310,11 @@ impl<'a> Generator<'a> {
         std::mem::replace(&mut self.out, stream)
     }
 
+    /// 3.3.11 and before: the codegen 3.3.12 rewrote.
+    pub(super) fn before_3_3_12(&self) -> bool {
+        self.options.compiler.core < CoreVersion::V3_3_12
+    }
+
     fn identifier_options(&self) -> IdentifierOptions<'a> {
         IdentifierOptions {
             setup_refs: self.options.setup_refs,
@@ -514,6 +519,14 @@ impl<'a> Generator<'a> {
         let options = self.options;
         let compiler = options.compiler;
         self.ctx.open_scope();
+        if self.before_3_3_12() {
+            // Before 3.3.12 a constant of `<script setup>` is a name in scope.
+            let mut consts: Vec<&String> = options.setup_consts.iter().collect();
+            consts.sort();
+            for name in consts {
+                self.ctx.declare(name);
+            }
+        }
         if let Some(name) = options.slots_assign_name {
             self.ctx.declare(name);
         }
@@ -651,7 +664,8 @@ impl<'a> Generator<'a> {
     fn template_refs_type(&mut self) {
         let compiler = self.options.compiler;
         if self.ctx.template_refs.is_empty()
-            || !(compiler.infer_template_dollar_refs
+            || !(self.before_3_3_12()
+                || compiler.infer_template_dollar_refs
                 || compiler.infer_component_dollar_refs
                 || !self.options.setup_refs.is_empty())
         {
@@ -863,12 +877,17 @@ impl<'a> Generator<'a> {
                 self.out.extend(codes);
                 self.ctx.conditions.push(Condition {
                     text,
-                    accesses: self
-                        .ctx
-                        .access_log
-                        .get(access_mark..)
-                        .unwrap_or(&[])
-                        .to_vec(),
+                    // Before 3.3.12 a condition is its text alone, and is
+                    // repeated in every handler under it.
+                    accesses: if self.before_3_3_12() {
+                        Vec::new()
+                    } else {
+                        self.ctx
+                            .access_log
+                            .get(access_mark..)
+                            .unwrap_or(&[])
+                            .to_vec()
+                    },
                 });
                 added_condition = true;
                 self.text(" ");
@@ -922,6 +941,11 @@ impl<'a> Generator<'a> {
                     .ctx
                     .give_up("the left side of a v-for isn't a list of bindings"),
             }
+        }
+
+        if self.before_3_3_12() {
+            self.v_for_3_3_11(node, left, &binding_names);
+            return;
         }
 
         // The source is read before the loop's names are in scope; a default
@@ -978,7 +1002,42 @@ impl<'a> Generator<'a> {
         self.text(source_alias);
         self.text("))");
         self.text(format!(") {{{NEW_LINE}"));
+        self.v_for_body(node);
+    }
 
+    /// `generateVFor` before 3.3.12: the left side as it is, and the source
+    /// read in the loop's own head, with its names already in scope.
+    fn v_for_3_3_11(
+        &mut self,
+        node: &'a crate::template::ast::For,
+        left: Option<(usize, &str)>,
+        binding_names: &[String],
+    ) {
+        let result = &node.parse_result;
+        for name in binding_names {
+            self.ctx.declare(name);
+        }
+        self.text("for (const [");
+        if let Some((left_start, text)) = left {
+            self.mapped(text, left_start, ALL);
+        }
+        self.text("] of ");
+        self.text("__VLS_vFor(");
+        self.interpolation(
+            ALL,
+            &result.source.content,
+            result.source.loc.start.offset,
+            "(",
+            ")",
+            false,
+        );
+        self.text("!)");
+        self.text(format!(") {{{NEW_LINE}"));
+        self.v_for_body(node);
+    }
+
+    /// The loop's body, and the end of its scope.
+    fn v_for_body(&mut self, node: &'a crate::template::ast::For) {
         let in_v_for = std::mem::replace(&mut self.ctx.in_v_for, true);
         for child in &node.children {
             self.template_child(*child, false, true);

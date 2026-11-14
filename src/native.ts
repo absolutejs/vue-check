@@ -13,7 +13,7 @@ import { dirname, isAbsolute, join, relative } from 'node:path';
  */
 
 /** The versions of @vue/language-core the port reproduces. */
-export const LANGUAGE_CORES = ['3.3.12', '3.3.13', '3.3.14'];
+export const LANGUAGE_CORES = ['3.3.9', '3.3.10', '3.3.11', '3.3.12', '3.3.13', '3.3.14'];
 /** The @vue/compiler-dom patches whose parser the port reproduces (3.5.x). */
 const COMPILER_DOM_PATCHES = [36, 45] as const;
 const ENTITIES = /^7\.0\./;

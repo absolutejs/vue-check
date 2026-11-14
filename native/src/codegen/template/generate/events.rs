@@ -134,15 +134,23 @@ impl<'a> Generator<'a> {
             } = definition;
             let event_var = self.ctx.internal_variable();
             *is_props_var_used = true;
-            let event_type = format!(
-                "{}Partial<__VLS_ResolveEvent<typeof {props_var}, typeof {emits_var}, '{prop_name}', '{emit_name}', '{}'>>",
-                if options.compiler.check_unknown_events {
-                    ""
-                } else {
-                    "Record<string, unknown> & "
-                },
-                js::camelize(&emit_name)
-            );
+            let event_type = if self.before_3_3_12() {
+                // Before 3.3.12: the event's own type, as it is.
+                format!(
+                    "__VLS_ResolveEvent<typeof {props_var}, typeof {emits_var}, '{prop_name}', '{emit_name}', '{}'>",
+                    js::camelize(&emit_name)
+                )
+            } else {
+                format!(
+                    "{}Partial<__VLS_ResolveEvent<typeof {props_var}, typeof {emits_var}, '{prop_name}', '{emit_name}', '{}'>>",
+                    if options.compiler.check_unknown_events {
+                        ""
+                    } else {
+                        "Record<string, unknown> & "
+                    },
+                    js::camelize(&emit_name)
+                )
+            };
             if options.is_ts {
                 self.text(format!("const {event_var}: {event_type} = {{{NEW_LINE}"));
             } else {
@@ -183,7 +191,9 @@ impl<'a> Generator<'a> {
                 self.text(format!(",{NEW_LINE}"));
             }
             self.text(format!("}}{END_OF_LINE}"));
-            self.text(format!("void {event_var}{END_OF_LINE}"));
+            if !self.before_3_3_12() {
+                self.text(format!("void {event_var}{END_OF_LINE}"));
+            }
         }
     }
 
@@ -225,7 +235,9 @@ impl<'a> Generator<'a> {
     fn event_parameter(&mut self, args_type: &str) {
         if !self.options.compiler.core.is_3_3_14() {
             // Before 3.3.14 `$event` has no type of its own.
-            self.text(format!("// @ts-ignore{NEW_LINE}"));
+            if !self.before_3_3_12() {
+                self.text(format!("// @ts-ignore{NEW_LINE}"));
+            }
             self.text(format!("(...[$event]) => {{{NEW_LINE}"));
         } else if self.options.is_ts {
             self.text(format!("(...[$event]: {args_type}) => {{{NEW_LINE}"));
@@ -260,8 +272,10 @@ impl<'a> Generator<'a> {
             .buffered(|generator| generator.interpolation(ALL, &exp.content, start, "", "", false));
 
         self.event_parameter(args_type);
-        // So that an unused `$event` isn't reported.
-        self.text(format!("void $event{END_OF_LINE}"));
+        if !self.before_3_3_12() {
+            // So that an unused `$event` isn't reported.
+            self.text(format!("void $event{END_OF_LINE}"));
+        }
         self.reasserts(access_mark);
         self.ctx.generate_condition_guards(&mut self.out);
         if shape.is_single_expression {

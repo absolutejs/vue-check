@@ -49,6 +49,8 @@ pub struct Block {
     pub setup: Option<AttrValue>,
     pub generic: Option<AttrOrTrue>,
     pub module: Option<BlockAttr>,
+    /// `module` as it is written: with a value (which may be empty), or none.
+    pub module_written: Option<AttrOrTrue>,
     pub scoped: bool,
 }
 
@@ -143,6 +145,7 @@ fn read_attribute(
         if name == "scoped" {
             block.scoped = true;
         } else if name == "module" {
+            block.module_written = Some(parse_attr(attribute.value.as_ref(), source));
             // An empty name is the default `$style`, at the attribute.
             block.module = Some(match parse_attr(attribute.value.as_ref(), source) {
                 AttrOrTrue::Attr(attr) if !attr.text.is_empty() => attr,
@@ -201,6 +204,7 @@ fn create_block(
         setup: None,
         generic: None,
         module: None,
+        module_written: None,
         scoped: false,
     };
     for prop in &node.props {

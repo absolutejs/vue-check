@@ -6,7 +6,9 @@ use super::{
     WITHOUT_COMPLETION, WITHOUT_HIGHLIGHT_AND_COMPLETION,
 };
 use crate::codegen::template::context::ComponentEntry;
-use crate::codegen::{END_OF_LINE, Features, NEW_LINE, Verification, is_identifier, to_string};
+use crate::codegen::{
+    CoreVersion, END_OF_LINE, Features, NEW_LINE, Verification, is_identifier, to_string,
+};
 use crate::js;
 use crate::template::ast::{Element, NodeId, Prop};
 
@@ -150,9 +152,14 @@ impl<'a> Generator<'a> {
                     original_names.push(name);
                 }
             }
-            let matched = original_names
-                .iter()
-                .find(|name| options.imported_components.contains(*name));
+            // Before 3.3.12: a constant of `<script setup>` by that name.
+            let matched = original_names.iter().find(|name| {
+                if self.before_3_3_12() {
+                    options.setup_consts.contains(*name)
+                } else {
+                    options.imported_components.contains(*name)
+                }
+            });
             if let Some(matched) = matched {
                 // The imported name, written as the tag is: the tag with the
                 // name's first character.
@@ -289,8 +296,13 @@ impl<'a> Generator<'a> {
                 "__VLS_asFunctionalComponent1"
             }
         ));
-        self.text(format!("// @ts-ignore{NEW_LINE}"));
-        self.text(props_copy(&props_str));
+        if self.before_3_3_12() {
+            // Before 3.3.12 the copy is the props as they are.
+            self.text(props_str.clone());
+        } else {
+            self.text(format!("// @ts-ignore{NEW_LINE}"));
+            self.text(props_copy(&props_str));
+        }
         self.text(format!("}})){END_OF_LINE}"));
 
         self.text("const ");
@@ -351,9 +363,12 @@ impl<'a> Generator<'a> {
             && !compiler
                 .fallthrough_component_names
                 .contains(&js::hyphenate(tag));
-        let infer_root_el =
-            self.ctx.dollar_vars.contains("$el") || compiler.infer_component_dollar_el;
-        let infer_template_refs = compiler.infer_template_dollar_refs
+        // Before 3.3.12 both are worked out whether or not they are read.
+        let infer_root_el = self.before_3_3_12()
+            || self.ctx.dollar_vars.contains("$el")
+            || compiler.infer_component_dollar_el;
+        let infer_template_refs = self.before_3_3_12()
+            || compiler.infer_template_dollar_refs
             || compiler.infer_component_dollar_refs
             || !options.setup_refs.is_empty();
 
@@ -506,7 +521,9 @@ impl<'a> Generator<'a> {
             self.ctx.add_template_ref(name, type_exp, offset);
         }
         if self.ctx.single_root_nodes.contains(&id)
-            && (self.ctx.dollar_vars.contains("$el") || compiler.infer_component_dollar_el)
+            && (self.before_3_3_12()
+                || self.ctx.dollar_vars.contains("$el")
+                || compiler.infer_component_dollar_el)
         {
             let type_text = format!("__VLS_Elements['{}']", node.tag);
             if !self.ctx.single_root_el_types.contains(&type_text) {
@@ -534,7 +551,12 @@ impl<'a> Generator<'a> {
         // `<template v-for="..." :key="...">`
         if !node.props.is_empty() {
             let mut failed = Vec::new();
-            let as_element = if compiler.check_unknown_props {
+            // 3.3.11 checks the props as an element's are, and the
+            // expressions it couldn't read after them; before it, neither.
+            let before_3_3_11 = compiler.core < CoreVersion::V3_3_11;
+            let as_element = if before_3_3_11 {
+                "__VLS_asFunctionalElement"
+            } else if compiler.check_unknown_props {
                 "__VLS_asFunctionalElement0"
             } else {
                 "__VLS_asFunctionalElement1"
@@ -551,13 +573,15 @@ impl<'a> Generator<'a> {
                 node,
                 &props,
                 compiler.check_unknown_props,
-                Some(&mut failed),
+                (!before_3_3_11).then_some(&mut failed),
                 Some("typeof __VLS_intrinsics.template"),
             );
             self.text("}");
             self.out.push(boundary.end());
             self.text(format!("){END_OF_LINE}"));
-            self.failed_expressions(&failed);
+            if !before_3_3_11 {
+                self.failed_expressions(&failed);
+            }
         }
         for child in &node.children {
             self.template_child(*child, true, false);

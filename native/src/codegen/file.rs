@@ -7,6 +7,7 @@ use std::collections::HashSet;
 
 use super::script::{FileAttr, Generic, ScriptOptions, generate_script};
 use super::style::{ResolveClassNames, Style, StyleOptions, generate_style};
+use super::CoreVersion;
 use super::template::generate::{CompilerFlags, TemplateOptions, generate_template};
 use super::{Code, Source, Verification, to_string};
 use crate::js;
@@ -227,6 +228,7 @@ fn derive(
     script_ranges: Option<&ScriptRanges>,
     setup_ranges: Option<&ScriptSetupRanges>,
     has_setup: bool,
+    core: CoreVersion,
 ) -> Derived {
     let mut derived = Derived::default();
     if let Some(ranges) = setup_ranges {
@@ -245,14 +247,30 @@ fn derive(
             }
         }
     }
+    // Before 3.3.12 an imported component isn't a binding, and the constants
+    // are the components (and the destructured props, below).
+    let old = core < CoreVersion::V3_3_12;
     for (name, flags) in &derived.binding_flags {
-        derived.setup_bindings.insert(name.clone());
-        if flags & binding_flag::COMPONENT != 0 {
+        let is_component = flags & binding_flag::COMPONENT != 0;
+        if !(old && is_component) {
+            derived.setup_bindings.insert(name.clone());
+        }
+        if is_component {
             derived.imported_components.insert(name.clone());
         }
-        if flags & binding_flag::CONST != 0 {
+        if if old {
+            is_component
+        } else {
+            flags & binding_flag::CONST != 0
+        } {
             derived.setup_consts.insert(name.clone());
         }
+    }
+    if old && setup_ranges.is_none() {
+        // Without `<script setup>` the original reads none of this.
+        derived.setup_bindings.clear();
+        derived.imported_components.clear();
+        derived.setup_consts.clear();
     }
     if let Some(props) = setup_ranges.and_then(|ranges| ranges.define_props.as_ref())
         && let Some(destructured) = &props.destructured
@@ -403,6 +421,7 @@ pub fn generate_file(
         script_ranges.as_ref(),
         setup_ranges.as_ref(),
         setup_content.is_some(),
+        compiler.core,
     );
 
     let has_vapor = |block: Option<&Block>| {
@@ -488,6 +507,10 @@ pub fn generate_file(
                 .map(|module| (module.text.clone(), module.position)),
             bindings: scan.bindings,
             class_names: scan.class_names,
+            module_written: match &block.module_written {
+                Some(AttrOrTrue::Attr(attr)) => Some((attr.text.clone(), attr.position)),
+                _ => None,
+            },
             imports: scan.imports,
             src: match &block.src {
                 Some(AttrOrTrue::Attr(src)) => Some((src.text.clone(), src.position)),
@@ -517,7 +540,9 @@ pub fn generate_file(
                 template: &block.content,
                 parsed: text,
                 is_html: !matches!(block.lang.as_deref(), Some("md")),
-                is_ts,
+                // Before 3.3.12 the template and the styles are written as
+                // TypeScript whatever the script's language.
+                is_ts: is_ts || compiler.core < CoreVersion::V3_3_12,
                 is_vapor,
                 compiler,
                 imported_components: &derived.imported_components,
@@ -543,7 +568,7 @@ pub fn generate_file(
             &StyleOptions {
                 core: compiler.core,
                 styles: &styles,
-                is_ts,
+                is_ts: is_ts || compiler.core < CoreVersion::V3_3_12,
                 lib: &compiler.lib,
                 resolve_class_names: *resolve_class_names,
                 resolve_style_imports: *resolve_style_imports,
@@ -560,7 +585,8 @@ pub fn generate_file(
     // First the bindings read where a type is narrowed, then the code, in
     // which each of them is read with `.value`.
     let has_bindings = !derived.setup_bindings.is_empty();
-    let dot_value_bindings = if has_bindings {
+    let old = compiler.core < CoreVersion::V3_3_12;
+    let dot_value_bindings = if has_bindings && !old {
         let none = HashSet::new();
         let template = template_pass(&none);
         let style = style_pass(&none, 0);
@@ -602,6 +628,33 @@ pub fn generate_file(
         return Err(Declined::file(reason));
     }
 
+    // Before 3.3.12: the bindings the template and the styles read, and the
+    // ones its components are named after.
+    let exposed = if has_bindings && old {
+        ordered_set(
+            template
+                .iter()
+                .flat_map(|generated| generated.context_access_names.clone())
+                .chain(
+                    style
+                        .iter()
+                        .flat_map(|generated| generated.context_access_names.clone()),
+                )
+                .chain(
+                    parsed_template
+                        .iter()
+                        .flat_map(|(_, _, root)| &root.components)
+                        .flat_map(|name| {
+                            let camelized = js::camelize(name);
+                            let capitalized = js::capitalize(&camelized);
+                            [camelized, capitalized]
+                        }),
+                )
+                .filter(|name| derived.setup_bindings.contains(name)),
+        )
+    } else {
+        Vec::new()
+    };
     let local_components = if has_bindings {
         ordered_set(
             parsed_template
@@ -674,7 +727,8 @@ pub fn generate_file(
                 .as_ref()
                 .map(|(left, right)| (left.as_str(), right.as_str())),
             types_path,
-            is_ts,
+            // Before 3.3.12 every helper is written as TypeScript.
+            is_ts: is_ts || old,
             script: blocks.script.map(|block| block.content.as_str()),
             script_src: script_src.as_ref(),
             script_ranges: script_ranges.as_ref(),
@@ -683,6 +737,7 @@ pub fn generate_file(
             script_setup_ranges: setup_ranges.as_ref(),
             template_and_style_types: &types,
             setup_bindings: &derived.script_setup_bindings,
+            exposed: &exposed,
             local_components: &local_components,
             local_directives: &local_directives,
             dot_value_bindings: &dot_value_bindings,

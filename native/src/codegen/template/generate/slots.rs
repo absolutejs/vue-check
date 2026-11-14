@@ -96,9 +96,11 @@ impl<'a> Generator<'a> {
             self.text("default");
             self.out.push(boundary.end());
         }
-        self.text(format!(
-            ": {slot_var} }} = __VLS_nonNull({ctx_var}.slots){END_OF_LINE}"
-        ));
+        self.text(if self.before_3_3_12() {
+            format!(": {slot_var} }} = {ctx_var}.slots!{END_OF_LINE}")
+        } else {
+            format!(": {slot_var} }} = __VLS_nonNull({ctx_var}.slots){END_OF_LINE}")
+        });
 
         self.ctx.open_scope();
         if let Some(exp) = slot_dir.and_then(|slot_dir| slot_dir.exp.as_ref()) {
@@ -109,7 +111,25 @@ impl<'a> Generator<'a> {
         }
         self.ctx.end_scope(&mut self.out);
 
-        if let Some(slot_dir) = slot_dir {
+        if let Some(slot_dir) = slot_dir.filter(|_| self.before_3_3_12()) {
+            // Before 3.3.12: inside the slot's block, as a read of the slot.
+            let source = self.source(&slot_dir.loc);
+            if slot_dir.arg.is_none() {
+                let prefix = if source.starts_with('#') {
+                    "#".len()
+                } else if source.starts_with("v-slot:") {
+                    "v-slot:".len()
+                } else {
+                    0
+                };
+                self.text(format!("{ctx_var}.slots!['"));
+                self.mapped("", slot_dir.loc.start.offset + prefix, COMPLETION);
+                self.text(format!(
+                    "'/* empty slot name completion */]{END_OF_LINE}"
+                ));
+            }
+            self.text(format!("}}{NEW_LINE}"));
+        } else if let Some(slot_dir) = slot_dir {
             self.text(format!("}}{NEW_LINE}"));
             // `#` or `v-slot:` with no name yet: where an editor completes one.
             let source = self.source(&slot_dir.loc);
@@ -174,7 +194,11 @@ impl<'a> Generator<'a> {
 
         self.text("const [");
         self.out.extend(interpolation);
-        self.text(format!("] = __VLS_vSlot(__VLS_nonNull({slot_var})"));
+        self.text(if self.before_3_3_12() {
+            format!("] = __VLS_vSlot({slot_var}!")
+        } else {
+            format!("] = __VLS_vSlot(__VLS_nonNull({slot_var})")
+        });
         if types.iter().any(Option::is_some) {
             self.text(", ");
             let boundary = self.boundary(exp.loc.start.offset, exp.loc.end.offset, VERIFICATION);

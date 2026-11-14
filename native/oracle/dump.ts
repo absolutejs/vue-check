@@ -287,29 +287,31 @@ if (ported) {
 		const call = {
 			code,
 			dollarVars: [...ctx.dollarVars],
-			dotValueBindings: [...options.dotValueBindings],
+			/* 3.3.11 and before have none of these four. */
+			dotValueBindings: [...(options.dotValueBindings ?? [])],
 			inNarrowing,
-			lib: options.vueCompilerOptions.lib,
+			lib: options.vueCompilerOptions?.lib ?? 'vue',
 			prefix,
 			reassertBindings: [...(options.reassertBindings ?? [])],
 			scopes: ctx.scopes.map((scope: Set<string>) => [...scope]),
-			scriptLang: options.scriptLang,
-			setupBindings: [...options.setupBindings],
-			setupConsts: [...options.setupConsts],
+			scriptLang: options.scriptLang ?? 'ts',
+			setupBindings: [...(options.setupBindings ?? [])],
+			setupConsts: [...(options.setupConsts ?? [])],
 			setupRefs: [...options.setupRefs],
 			source: block.name,
 			start,
 			suffix,
 			verification: verificationOf(features)
 		};
-		const accessMark = ctx.accessLog.length;
+		/* Before 3.3.12 the context keeps no log of the names read. */
+		const accessMark = ctx.accessLog?.length;
 		const codes: unknown[] = [];
 		for (const generated of original(options, ctx, block, features, code, start, prefix, suffix, inNarrowing)) {
 			/* Copied now: the template codegen replaces a piece's features once it has it. */
 			codes.push(typeof generated === 'string' ? generated : [...generated]);
 			yield generated;
 		}
-		interpolations.push({ ...call, accesses: ctx.accessLog.slice(accessMark), codes: codesOf(codes) });
+		interpolations.push({ ...call, accesses: ctx.accessLog?.slice(accessMark) ?? null, codes: codesOf(codes) });
 	};
 }
 /* generateTemplate wrapped the same way: its options and what it returned. */
@@ -344,19 +346,20 @@ if (ported) {
 			},
 			componentName: options.componentName,
 			contextAccesses: [...result.contextAccesses.keys()],
-			dotValueAccesses: [...result.dotValueAccesses],
-			dotValueBindings: [...options.dotValueBindings],
+			/* 3.3.11 and before have none of the ones defaulted here. */
+			dotValueAccesses: [...(result.dotValueAccesses ?? [])],
+			dotValueBindings: [...(options.dotValueBindings ?? [])],
 			generatedTypes: [...result.generatedTypes],
 			hasAst: Boolean(options.template.ast),
 			hasDefineSlots: Boolean(options.hasDefineSlots),
-			importedComponents: [...options.importedComponents],
+			importedComponents: [...(options.importedComponents ?? [])],
 			inheritAttrs: options.inheritAttrs,
 			isVapor: Boolean(options.isVapor),
 			lang: options.template.lang,
 			propsAssignName: options.propsAssignName ?? null,
-			reassertBindings: [...options.reassertBindings],
-			scriptLang: options.scriptLang,
-			setupBindings: [...options.setupBindings],
+			reassertBindings: [...(options.reassertBindings ?? [])],
+			scriptLang: options.scriptLang ?? 'ts',
+			setupBindings: [...(options.setupBindings ?? [])],
 			setupConsts: [...options.setupConsts],
 			setupRefs: [...options.setupRefs],
 			slotsAssignName: options.slotsAssignName ?? null,
