@@ -261,3 +261,134 @@ pub fn sfc(source: &str, sfc: &ParsedSfc) -> Value {
         "customBlocks": all(&sfc.descriptor.custom_blocks),
     })
 }
+
+/// A `<script>` block's analysis, with offsets into the block's text.
+pub mod script {
+    use serde_json::{Value, json};
+
+    use crate::script::{
+        Bindings, CallRange, ComponentOptions, MacroCall, Range, ScriptRanges, ScriptSetupRanges,
+    };
+    use crate::utf16::Utf16Map;
+
+    fn range(map: &Utf16Map, range: Range) -> Value {
+        json!([map.offset(range.start), map.offset(range.end)])
+    }
+
+    fn optional(map: &Utf16Map, value: Option<Range>) -> Value {
+        value.map_or(Value::Null, |value| range(map, value))
+    }
+
+    fn bindings(bindings: &Bindings) -> Value {
+        json!(bindings.0)
+    }
+
+    fn call(map: &Utf16Map, call: &CallRange) -> Value {
+        json!({
+            "callExp": range(map, call.call_exp),
+            "exp": range(map, call.exp),
+            "arg": optional(map, call.arg),
+            "typeArg": optional(map, call.type_arg),
+        })
+    }
+
+    fn macro_call(map: &Utf16Map, value: &MacroCall) -> Value {
+        let mut dumped = call(map, &value.call);
+        if let Some(fields) = dumped.as_object_mut() {
+            fields.insert("name".to_owned(), json!(value.name));
+            fields.insert("statement".to_owned(), range(map, value.statement));
+        }
+        dumped
+    }
+
+    fn options(map: &Utf16Map, options: &ComponentOptions) -> Value {
+        json!({
+            "isObjectLiteral": options.is_object_literal,
+            "expression": range(map, options.expression),
+            "args": range(map, options.args),
+            "components": optional(map, options.components),
+            "directives": optional(map, options.directives),
+            "name": optional(map, options.name),
+            "inheritAttrs": options.inherit_attrs,
+        })
+    }
+
+    pub fn ranges(text: &str, ranges: &ScriptRanges) -> Value {
+        let map = Utf16Map::new(text);
+        json!({
+            "bindings": bindings(&ranges.bindings),
+            "exportDefault": ranges.export_default.as_ref().map(|export| json!({
+                "start": map.offset(export.range.start),
+                "end": map.offset(export.range.end),
+                "expression": range(&map, export.expression),
+                "isObjectLiteral": export.is_object_literal,
+                "options": export.options.as_ref().map(|found| options(&map, found)),
+            })),
+        })
+    }
+
+    pub fn setup_ranges(text: &str, ranges: &ScriptSetupRanges) -> Value {
+        let map = Utf16Map::new(text);
+        let calls = |calls: &[CallRange]| {
+            calls
+                .iter()
+                .map(|found| call(&map, found))
+                .collect::<Vec<_>>()
+        };
+        json!({
+            "bindings": bindings(&ranges.bindings),
+            "leadingCommentEndOffset": map.offset(ranges.leading_comment_end_offset),
+            "importSectionEndOffset": map.offset(ranges.import_section_end_offset),
+            "defineModel": ranges.define_model.iter().map(|model| json!({
+                "arg": optional(&map, model.arg),
+                "localName": optional(&map, model.local_name),
+                "name": optional(&map, model.name),
+                "type": optional(&map, model.r#type),
+                "modifierType": optional(&map, model.modifier_type),
+                "runtimeType": optional(&map, model.runtime_type),
+                "defaultValue": optional(&map, model.default_value),
+                "defaultPropsArg": optional(&map, model.default_props_arg),
+                "required": model.required,
+                "comments": optional(&map, model.comments),
+            })).collect::<Vec<_>>(),
+            "defineProps": ranges.define_props.as_ref().map(|props| {
+                let mut dumped = macro_call(&map, &props.call);
+                if let Some(fields) = dumped.as_object_mut() {
+                    fields.insert(
+                        "destructured".to_owned(),
+                        json!(props.destructured.as_ref().map(|names| names
+                            .iter()
+                            .map(|(name, initializer)| json!([name, optional(&map, *initializer)]))
+                            .collect::<Vec<_>>())),
+                    );
+                    fields.insert("destructuredRest".to_owned(), json!(props.destructured_rest));
+                }
+                dumped
+            }),
+            "withDefaults": ranges.with_defaults.as_ref().map(|found| call(&map, found)),
+            "defineEmits": ranges.define_emits.as_ref().map(|emits| {
+                let mut dumped = macro_call(&map, &emits.call);
+                if let Some(fields) = dumped.as_object_mut() {
+                    fields.insert("hasUnionTypeArg".to_owned(), json!(emits.has_union_type_arg));
+                }
+                dumped
+            }),
+            "defineSlots": ranges.define_slots.as_ref().map(|found| macro_call(&map, found)),
+            "defineExpose": ranges.define_expose.as_ref().map(|found| call(&map, found)),
+            "defineOptions": ranges.define_options.as_ref().map(|found| json!({
+                "name": found.name,
+                "inheritAttrs": found.inherit_attrs,
+            })),
+            "useAttrs": calls(&ranges.use_attrs),
+            "useCssModule": calls(&ranges.use_css_module),
+            "useSlots": calls(&ranges.use_slots),
+            "useTemplateRef": ranges.use_template_ref.iter().map(|found| {
+                let mut dumped = call(&map, &found.call);
+                if let Some(fields) = dumped.as_object_mut() {
+                    fields.insert("name".to_owned(), json!(found.name));
+                }
+                dumped
+            }).collect::<Vec<_>>(),
+        })
+    }
+}

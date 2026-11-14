@@ -164,6 +164,91 @@ const templateTree = (lang: string, source: string) => {
 	return result ? tree(result.ast, errors) : null;
 };
 
+/* What language-core reads from each <script> block's TypeScript tree, with
+ * its default compiler options. */
+const analysis = ported
+	? {
+			options: coreRequire(join(dirname(corePackage), 'lib/compilerOptions.js')).getDefaultCompilerOptions(),
+			script: coreRequire(join(dirname(corePackage), 'lib/parsers/scriptRanges.js')).parseScriptRanges,
+			setup: coreRequire(join(dirname(corePackage), 'lib/parsers/scriptSetupRanges.js')).parseScriptSetupRanges,
+			ts: projectRequire('typescript')
+		}
+	: null;
+const VALID_LANGS = new Set(['js', 'jsx', 'ts', 'tsx']);
+const range = (value: AnyNode | undefined) => (value ? [value.start, value.end] : null);
+const callRange = (value: AnyNode) => ({ arg: range(value.arg), callExp: range(value.callExp), exp: range(value.exp), typeArg: range(value.typeArg) });
+const macroCall = (value: AnyNode | undefined) => (value ? { ...callRange(value), name: value.name ?? null, statement: range(value.statement) } : null);
+const scriptRanges = (value: AnyNode | null | undefined) => {
+	if (!analysis || !value || !VALID_LANGS.has(value.lang ?? 'js')) return null;
+	const ast = analysis.ts.createSourceFile(`.${value.lang ?? 'js'}`, value.content, 99);
+	const { bindings, exportDefault } = analysis.script(analysis.ts, ast, analysis.options);
+	const options = exportDefault?.options;
+
+	return {
+		bindings: [...bindings],
+		exportDefault: exportDefault
+			? {
+					end: exportDefault.end,
+					expression: range(exportDefault.expression),
+					isObjectLiteral: exportDefault.isObjectLiteral,
+					options: options
+						? {
+								args: range(options.args),
+								components: range(options.components),
+								directives: range(options.directives),
+								expression: range(options.expression),
+								inheritAttrs: options.inheritAttrs ?? null,
+								isObjectLiteral: options.isObjectLiteral,
+								name: range(options.name)
+							}
+						: null,
+					start: exportDefault.start
+				}
+			: null
+	};
+};
+const scriptSetupRanges = (value: AnyNode | null | undefined) => {
+	if (!analysis || !value || !VALID_LANGS.has(value.lang ?? 'js')) return null;
+	const { ts } = analysis;
+	const ast = ts.createSourceFile(`.${value.lang ?? 'js'}`, value.content, 99);
+	const found = analysis.setup(ts, ast, analysis.options);
+	const nodeRange = (node: AnyNode | undefined) => (node ? [ts.getTokenPosOfNode(node, ast), node.end] : null);
+
+	return {
+		bindings: [...found.bindings],
+		defineEmits: found.defineEmits ? { ...macroCall(found.defineEmits), hasUnionTypeArg: Boolean(found.defineEmits.hasUnionTypeArg) } : null,
+		defineExpose: found.defineExpose ? callRange(found.defineExpose) : null,
+		defineModel: found.defineModel.map((model: AnyNode) => ({
+			arg: range(model.arg),
+			comments: range(model.comments),
+			defaultPropsArg: range(model.defaultPropsArg),
+			defaultValue: range(model.defaultValue),
+			localName: range(model.localName),
+			modifierType: range(model.modifierType),
+			name: range(model.name),
+			required: Boolean(model.required),
+			runtimeType: range(model.runtimeType),
+			type: range(model.type)
+		})),
+		defineOptions: found.defineOptions ? { inheritAttrs: found.defineOptions.inheritAttrs ?? null, name: found.defineOptions.name ?? null } : null,
+		defineProps: found.defineProps
+			? {
+					...macroCall(found.defineProps),
+					destructured: found.defineProps.destructured ? [...found.defineProps.destructured].map(([name, initializer]) => [name, nodeRange(initializer)]) : null,
+					destructuredRest: found.defineProps.destructuredRest ?? null
+				}
+			: null,
+		defineSlots: macroCall(found.defineSlots),
+		importSectionEndOffset: found.importSectionEndOffset,
+		leadingCommentEndOffset: found.leadingCommentEndOffset,
+		useAttrs: found.useAttrs.map(callRange),
+		useCssModule: found.useCssModule.map(callRange),
+		useSlots: found.useSlots.map(callRange),
+		useTemplateRef: found.useTemplateRef.map((call: AnyNode) => ({ ...callRange(call), name: call.name ?? null })),
+		withDefaults: found.withDefaults ? callRange(found.withDefaults) : null
+	};
+};
+
 const SKIPPED = new Set(['node_modules', '.git', '.vue-check', 'dist']);
 const vueFiles = (folder: string): string[] =>
 	readdirSync(folder, { withFileTypes: true })
@@ -211,6 +296,8 @@ for (const [index, path] of paths.entries()) {
 				styles: descriptor.styles.map(block),
 				template: block(descriptor.template)
 			};
+			record.script = scriptRanges(descriptor.script);
+			record.scriptSetup = scriptSetupRanges(descriptor.scriptSetup);
 			const template = descriptor.template;
 			record.template = template ? templateTree(template.lang ?? 'html', template.content) : null;
 			poisoned = leaked();

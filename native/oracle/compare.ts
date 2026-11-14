@@ -72,7 +72,10 @@ for (const expected of lines('oracle.jsonl')) {
 	/* Blocks and the template are only in the oracle for the ported version. */
 	const found = expected.sfc.template === undefined
 		? difference(expected.sfc.ast, actual.sfc.ast, 'sfc.ast')
-		: difference(expected.sfc, actual.sfc, 'sfc') ?? difference(expected.template, actual.template, 'template');
+		: difference(expected.sfc, actual.sfc, 'sfc') ??
+			difference(expected.template, actual.template, 'template') ??
+			difference(expected.script, actual.script, 'script') ??
+			difference(expected.scriptSetup, actual.scriptSetup, 'scriptSetup');
 	if (found) different.push(`${expected.file}: ${found.slice(0, 600)}`);
 	else same += 1;
 }

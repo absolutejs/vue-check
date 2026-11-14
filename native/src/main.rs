@@ -9,6 +9,7 @@
 
 mod dump;
 mod js;
+mod script;
 mod sfc;
 mod template;
 mod utf16;
@@ -47,10 +48,35 @@ fn parse_file(input: &Input) -> Value {
             unsupported = unsupported.or(template::transform::transform(&mut parsed.root));
             dump::template(&source, &parsed)
         });
+    // Each <script> block's analysis. A block in a language that isn't
+    // JavaScript or TypeScript has none.
+    let options = script::ScriptOptions::default();
+    let mut analyze = |block: Option<&sfc::Block>, setup: bool| {
+        let block = block?;
+        let lang = script::ScriptLang::from_lang(block.lang.as_deref().unwrap_or("js"))?;
+        let dumped = if setup {
+            script::parse_script_setup_ranges(&block.content, lang, &options)
+                .map(|ranges| dump::script::setup_ranges(&block.content, &ranges))
+        } else {
+            script::parse_script_ranges(&block.content, lang, &options)
+                .map(|ranges| dump::script::ranges(&block.content, &ranges))
+        };
+        match dumped {
+            Ok(dumped) => Some(dumped),
+            Err(reason) => {
+                unsupported = unsupported.or(Some(reason));
+                None
+            }
+        }
+    };
+    let script_ranges = analyze(sfc.descriptor.script.as_ref(), false);
+    let script_setup_ranges = analyze(sfc.descriptor.script_setup.as_ref(), true);
     json!({
         "file": input.file,
         "sfc": dump::sfc(&input.text, &sfc),
         "template": template,
+        "script": script_ranges,
+        "scriptSetup": script_setup_ranges,
         "unsupported": unsupported,
         "poisonsLaterParses": poisons_later_parses,
     })
