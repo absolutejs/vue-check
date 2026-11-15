@@ -139,6 +139,22 @@ export const parseProject = (ts: typeof ownTs, tsconfig: string, extensions: str
 export const projectFilesOf = (ts: typeof ownTs, tsconfig: string, extensions: string[]) =>
 	parseProject(ts, tsconfig, extensions).fileNames;
 /** The extensions vue-tsc checks: all Vue is configured for. */
+type CodeFeatures = Record<string, { verification?: unknown }>;
+/** Vue's fixed source-map rules (`codeFeatures`). The package exports them
+ * from 3.2 on; before that they are the same objects in a file of its own. */
+export const codeFeaturesOf = (core: typeof ownCore, coreRequire: NodeJS.Require): CodeFeatures => {
+	const exported = (core as unknown as { codeFeatures?: CodeFeatures }).codeFeatures;
+	if (exported) return exported;
+	try {
+		const internal: { codeFeatures?: CodeFeatures } = coreRequire('./lib/codegen/codeFeatures');
+
+		return internal.codeFeatures ?? {};
+	} catch {
+		// Not in this version: every rule is decided by Volar itself.
+		return {};
+	}
+};
+
 export const vueExtensionsOf = (core: typeof ownCore, vueOptions: Parameters<typeof ownCore.getAllExtensions>[0]) =>
 	typeof core.getAllExtensions === 'function' ? core.getAllExtensions(vueOptions) : ['.vue'];
 
@@ -244,6 +260,7 @@ type EmbeddedCode = {
 	text: string;
 };
 type GenerateResult = {
+	codeFeatures: CodeFeatures;
 	core: typeof ownCore;
 	extensions: string[];
 	maps: Record<string, SourceMap>;
@@ -568,5 +585,5 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 		);
 	}
 
-	return { core, extensions, maps, packageImports, references, ts, unparsed };
+	return { codeFeatures: codeFeaturesOf(core, coreRequire), core, extensions, maps, packageImports, references, ts, unparsed };
 };

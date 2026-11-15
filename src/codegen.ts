@@ -17,7 +17,7 @@ import { serialize } from './serialize';
  */
 
 const [root = process.cwd(), tsconfig = join(root, 'tsconfig.json'), outDir = join(root, '.vue-check')] = process.argv.slice(2);
-const { core, extensions, maps, packageImports, references, ts: projectTs, unparsed } = generate({ outDir, root, tsconfig });
+const { codeFeatures, core, extensions, maps, packageImports, references, ts: projectTs, unparsed } = generate({ outDir, root, tsconfig });
 
 /* A generated twin resolves imports from its own folder: bare imports walk up
  * node_modules folders, and the nearest package.json sets a file's module
@@ -121,5 +121,4 @@ writeFileSync(
  * (an internal table: without it, every error is decided by Volar itself). */
 const diagnostics = (projectTs as unknown as { Diagnostics?: Record<string, { code: number }> }).Diagnostics ?? {};
 const diagnosticCodes = [...new Set(Object.values(diagnostics).map((message) => message.code))].sort((a, b) => a - b);
-const codeFeatures = (core as unknown as { codeFeatures?: Record<string, { verification?: unknown }> }).codeFeatures ?? {};
 writeFileSync(join(outDir, 'codegen.json'), JSON.stringify({ ...serialize(maps, codeFeatures, diagnosticCodes), unparsed }));
