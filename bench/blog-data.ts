@@ -25,9 +25,17 @@ const output = process.argv[2];
 if (!output) throw new Error('usage: bun bench/blog-data.ts <output.ts>');
 const directory = join(import.meta.dir, 'results');
 const read = <T>(file: string) => JSON.parse(readFileSync(join(directory, file), 'utf8')) as T;
+/* A result file git ignores is one that isn't published: it never reaches a post. */
+const ignored = (file: string) =>
+	Bun.spawnSync(['git', 'check-ignore', '-q', join(directory, file)], { cwd: join(import.meta.dir, '..') }).exitCode !== 1;
 const files = readdirSync(directory)
-	.filter((file) => file.endsWith('.json') && !file.endsWith('.raw.json') && file !== 'conformance.json')
+	.filter((file) => file.endsWith('.json') && !file.endsWith('.raw.json') && file !== 'conformance.json' && !ignored(file))
 	.sort();
+/* The codegen step with each codegen, from bench/codegen-bar.sh (bench/codegen-results.json). */
+type Codegen = { files: number; javascriptMs: number; name: string; native: number; nativeMs: number };
+const codegen = (JSON.parse(readFileSync(join(import.meta.dir, 'codegen-results.json'), 'utf8')) as Codegen[]).sort(
+	(a, b) => b.javascriptMs - a.javascriptMs
+);
 
 const projects = files
 	.map((file) => ({ name: file.replace(/\.json$/, ''), result: read<Result>(file) }))
@@ -66,6 +74,7 @@ const conformance = read<{ bunMatchesTsc7: number; cases: number; failing: { nam
 const environment = read<Result>(files.find((file) => file.startsWith('vue-pure-admin.')) ?? files[0] ?? '').environment;
 
 const data = {
+	codegen,
 	conformance: {
 		bunMatchesTsc7: conformance.bunMatchesTsc7,
 		cases: conformance.cases,
@@ -115,6 +124,7 @@ type ProjectResult = {
 };
 
 type VueCheckResults = {
+	codegen: { files: number; javascriptMs: number; name: string; native: number; nativeMs: number }[];
 	conformance: { bunMatchesTsc7: number; cases: number; different: string[]; identical: number };
 	environment: { bun: string; containerMemoryLimit: string; cpu: string; node: string; totalMemoryGB: number; tsc7: string };
 	planted: { bunMatchesTsc7: boolean; identical: boolean; reported: number };

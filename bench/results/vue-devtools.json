@@ -1,0 +1,82 @@
+{
+	"environment": {
+		"bun": "1.4.4+absolute.2",
+		"containerMemoryLimit": "6 GB",
+		"cpu": "Intel(R) Core(TM) Ultra 7 155U",
+		"node": "v26.3.0",
+		"projectTypeScript": "6.0.3",
+		"totalMemoryGB": 12,
+		"tsc7": "7.0.2",
+		"vueTsc": "3.3.14"
+	},
+	"invalidRuns": {
+		"vue-tsc": [],
+		"vue-check": [],
+		"vue-check (1 thread)": []
+	},
+	"oraclesFinished": true,
+	"cores": 8,
+	"identical": true,
+	"bunCheckMatchesTsc7": true,
+	"bunVsTsc7": {
+		"onlyBunCheck": [],
+		"onlyTsc7": []
+	},
+	"endToEnd": {
+		"onlyExpected": [],
+		"onlyVueCheck": []
+	},
+	"typeScript7Changes": {
+		"added": [
+			"src/components/components/ReactivityGraphToolbar.vue(221,30): error TS2739: Type '{}' is missing the following properties from type 'Pick<ReactivityGraphNode, \"label\" | \"type\">': label, type",
+			"src/components/components/ReactivityGraphToolbar.vue(226,34): error TS2739: Type '{}' is missing the following properties from type 'Pick<ReactivityGraphNode, \"label\" | \"type\">': label, type"
+		],
+		"removed": [
+			"src/components/components/ReactivityGraphToolbar.vue(221,30): error TS2345: Argument of type '{}' is not assignable to parameter of type 'Pick<ReactivityGraphNode, \"type\" | \"label\">'.",
+			"src/components/components/ReactivityGraphToolbar.vue(226,34): error TS2345: Argument of type '{}' is not assignable to parameter of type 'Pick<ReactivityGraphNode, \"type\" | \"label\">'."
+		]
+	},
+	"vueHandling": {
+		"onlyVueCheck": [],
+		"onlyVueTsc": []
+	},
+	"project": "/project/packages/client",
+	"runs": 5,
+	"summary": {
+		"vue-tsc": {
+			"errors": 95,
+			"medianPeakRssMB": 402,
+			"medianWallS": 3.08
+		},
+		"vue-check": {
+			"errors": 95,
+			"medianPeakRssMB": 180,
+			"medianWallS": 0.79,
+			"phases": {
+				"checkMB": 124,
+				"checkS": 0.08,
+				"codegenMB": 146,
+				"codegenS": 0.42,
+				"mapMB": 133,
+				"regeneratedFiles": 0,
+				"mapS": 0.27,
+				"vueFiles": 31
+			}
+		},
+		"vue-check (1 thread)": {
+			"errors": 95,
+			"medianPeakRssMB": 178,
+			"medianWallS": 0.93,
+			"phases": {
+				"checkMB": 88,
+				"checkS": 0.22,
+				"codegenMB": 143,
+				"codegenS": 0.41,
+				"mapMB": 135,
+				"regeneratedFiles": 0,
+				"mapS": 0.28,
+				"vueFiles": 31
+			}
+		}
+	}
+}

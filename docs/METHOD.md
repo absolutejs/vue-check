@@ -98,6 +98,13 @@ loaded from the project's install, and the same call `vue-tsc` makes: `toSourceR
 a `verification` feature that says which errors `vue-tsc` reports there. Internal scaffolding is never
 reported, for example, and certain error codes are suppressed on props.
 
+Most of what a checker reports in generated code is in that scaffolding: hundreds of unused names in
+a project with no error of its own. `toSourceRange` maps a range by where it starts, and with no
+mapping there that reports the error's code it yields nothing whatever the range's length. So that
+is asked first, with Volar's own call, and the error's length (which needs TypeScript's parser) is
+only worked out for an error whose start is mapped. `VUE_CHECK_VERIFY_SPANS=1` does both for every
+error and fails if they ever disagree; the differential is also run with it.
+
 The maps travel from step 1 to step 3 as data, so the mapping never loads the codegen again:
 
 - a segment's `verification` that is `true` or `false` is kept as is;
@@ -225,48 +232,72 @@ For a package in a monorepo, set `WORKSPACE=<monorepo root>`.
 
 | Project | vue-tsc | vue-check | vue-check (1 thread) | Faster | Less memory |
 |---|---|---|---|---|---|
-| element-plus | 18.9 s · 1220 MB | 5.43 s · 420 MB | 6.65 s · 420 MB | 3.5× | 2.9× |
-| gitea | 9.97 s · 1012 MB | 1.41 s · 316 MB | 1.88 s · 272 MB | 7.1× | 3.2× |
-| halo-console-components | 2.58 s · 301 MB | 1.39 s · 227 MB | 1.61 s · 230 MB | 1.9× | 1.3× |
-| naive-ui-admin | 8.61 s · 914 MB | 2.43 s · 303 MB | 2.88 s · 301 MB | 3.5× | 3.0× |
-| slidev | 4.14 s · 740 MB | 1.07 s · 246 MB | 1.24 s · 242 MB | 3.9× | 3.0× |
-| soybean-admin | 1.56 s · 577 MB | 1.71 s · 270 MB | 1.76 s · 271 MB | 0.9× | 2.1× |
-| vitepress-client | 3.42 s · 364 MB | 1 s · 205 MB | 1.09 s · 202 MB | 3.4× | 1.8× |
-| vitepress-docs | 1.68 s · 302 MB | 0.68 s · 161 MB | 0.7 s · 162 MB | 2.5× | 1.9× |
-| vue-element-plus-admin | 5.49 s · 537 MB | 1.38 s · 235 MB | 1.72 s · 238 MB | 4.0× | 2.3× |
-| vue-pure-admin | 19.15 s · 1466 MB | 4.33 s · 410 MB | 5.12 s · 409 MB | 4.4× | 3.6× |
-| vue-vben-admin | 23.17 s · 1445 MB | 4.54 s · 447 MB | 5.92 s · 421 MB | 5.1× | 3.2× |
+| 1panel | 29.21 s · 2747 MB | 3.87 s · 827 MB | 5.86 s · 836 MB | 7.5× | 3.3× |
+| directus | 30.94 s · 2436 MB | 6.49 s · 724 MB | 9.34 s · 706 MB | 4.8× | 3.4× |
+| dozzle | 7.03 s · 1394 MB | 1.62 s · 344 MB | 2.44 s · 295 MB | 4.3× | 4.1× |
+| element-plus | 16.96 s · 1221 MB | 3.76 s · 367 MB | 4.48 s · 365 MB | 4.5× | 3.3× |
+| gitea | 11.24 s · 1007 MB | 1.07 s · 309 MB | 1.33 s · 273 MB | 10.5× | 3.3× |
+| halo-console-components | 2.8 s · 300 MB | 0.62 s · 219 MB | 0.65 s · 178 MB | 4.5× | 1.4× |
+| misskey | 26.47 s · 2198 MB | 2.79 s · 558 MB | 4.34 s · 490 MB | 9.5× | 3.9× |
+| naive-ui-admin | 10.12 s · 908 MB | 2.09 s · 302 MB | 2.55 s · 287 MB | 4.8× | 3.0× |
+| reka-ui | 3.81 s · 634 MB | 1.1 s · 273 MB | 1.83 s · 231 MB | 3.5× | 2.3× |
+| slidev | 5.69 s · 741 MB | 0.88 s · 243 MB | 1.07 s · 209 MB | 6.5× | 3.0× |
+| soybean-admin | 1.33 s · 584 MB | 0.61 s · 207 MB | 0.81 s · 189 MB | 2.2× | 2.8× |
+| vikunja | 21.11 s · 1423 MB | 2 s · 417 MB | 3.08 s · 355 MB | 10.6× | 3.4× |
+| vitepress-client | 4.2 s · 367 MB | 0.87 s · 175 MB | 1.02 s · 176 MB | 4.8× | 2.1× |
+| vitepress-docs | 2.13 s · 302 MB | 0.68 s · 165 MB | 0.71 s · 164 MB | 3.1× | 1.8× |
+| vue-devtools | 3.08 s · 402 MB | 0.79 s · 180 MB | 0.93 s · 178 MB | 3.9× | 2.2× |
+| vue-element-plus-admin | 4.66 s · 539 MB | 0.7 s · 216 MB | 0.9 s · 171 MB | 6.7× | 2.5× |
+| vue-pure-admin | 19.42 s · 1467 MB | 2.14 s · 411 MB | 2.68 s · 371 MB | 9.1× | 3.6× |
+| vue-vben-admin | 20.14 s · 1457 MB | 2.34 s · 446 MB | 3.27 s · 423 MB | 8.6× | 3.3× |
+| vueuse | 3.73 s · 708 MB | 0.84 s · 309 MB | 1.27 s · 232 MB | 4.4× | 2.3× |
 
 | Project | vue-tsc | Errors (vue-tsc) | Same as vue-tsc | bun check = tsc 7 | TypeScript 7 changes |
 |---|---|---|---|---|---|
+| 1panel | 3.3.9 | 267 | ✓ | ✓ | 10 |
+| directus | 3.1.8 | 2298 | ✓ | ✓ | 234 |
+| dozzle | 3.3.14 | 0 | ✓ | ✓ | 0 |
 | element-plus | 3.1.5 | 1 | ✓ | ✓ | 3 |
 | gitea | 3.3.14 | 0 | ✓ | ✓ | 0 |
 | halo-console-components | 3.3.9 | 0 | ✓ | ✓ | 0 |
+| misskey | 3.3.11 | 687 | ✓ | ✓ | 4 |
 | naive-ui-admin | 3.3.13 | 0 | ✓ | ✓ | 0 |
+| reka-ui | 3.3.11 | 0 | ✓ | ✓ | 2 |
 | slidev | 3.3.14 | 1 | ✓ | ✓ | 0 |
 | soybean-admin | 3.3.12 | 1 | ✓ | ✓ | 0 |
+| vikunja | 3.3.11 | 0 | ✓ | ✓ | 0 |
 | vitepress-client | 3.3.14 | 33 | ✓ | ✓ | 0 |
 | vitepress-docs | 3.3.14 | 17 | ✓ | ✓ | 0 |
+| vue-devtools | 3.3.14 | 95 | ✓ | ✓ | 4 |
 | vue-element-plus-admin | 3.3.9 | 0 | ✓ | ✓ | 0 |
 | vue-pure-admin-planted-errors | 3.3.13 | 220 | ✓ | ✓ | 24 |
 | vue-pure-admin | 3.3.13 | 0 | ✓ | ✓ | 6 |
 | vue-vben-admin | 3.3.11 | 0 | ✓ | ✓ | 0 |
+| vueuse | 3.3.14 | 1 | ✓ | ✓ | 0 |
 
 | Project | Vue files | Codegen | bun check | Mapping |
 |---|---|---|---|---|
-| element-plus | 165 | 2.26 s · 339 MB | 0.92 s · 297 MB | 2.17 s · 420 MB |
-| gitea | 26 | 0.69 s · 180 MB | 0.36 s · 277 MB | 0.35 s · 142 MB |
-| halo-console-components | 31 | 0.97 s · 193 MB | 0.09 s · 100 MB | 0.23 s · 98 MB |
-| naive-ui-admin | 68 | 1.52 s · 269 MB | 0.32 s · 257 MB | 0.55 s · 188 MB |
-| slidev | 121 | 0.94 s · 211 MB | 0.13 s · 206 MB | 0 s · 40 MB |
-| soybean-admin | 90 | 1.57 s · 236 MB | 0.13 s · 169 MB | 0 s · 39 MB |
-| vitepress-client | 66 | 0.59 s · 171 MB | 0.09 s · 112 MB | 0.3 s · 121 MB |
-| vitepress-docs | 4 | 0.44 s · 126 MB | 0.06 s · 110 MB | 0.16 s · 89 MB |
-| vue-element-plus-admin | 34 | 0.9 s · 201 MB | 0.16 s · 175 MB | 0.31 s · 121 MB |
-| vue-pure-admin | 255 | 2.82 s · 369 MB | 0.98 s · 353 MB | 0.45 s · 192 MB |
-| vue-vben-admin | 376 | 2.58 s · 390 MB | 0.98 s · 391 MB | 0.92 s · 299 MB |
+| 1panel | 623 | 1.38 s · 585 MB | 0.89 s · 494 MB | 1.36 s · 827 MB |
+| directus | 597 | 3.64 s · 667 MB | 1.29 s · 638 MB | 1.48 s · 588 MB |
+| dozzle | 219 | 0.72 s · 191 MB | 0.43 s · 286 MB | 0.42 s · 181 MB |
+| element-plus | 165 | 2.22 s · 333 MB | 1.09 s · 303 MB | 0.33 s · 138 MB |
+| gitea | 26 | 0.58 s · 149 MB | 0.41 s · 270 MB | 0.04 s · 58 MB |
+| halo-console-components | 31 | 0.52 s · 185 MB | 0.08 s · 100 MB | 0.01 s · 39 MB |
+| misskey | 592 | 0.86 s · 326 MB | 0.7 s · 460 MB | 1.09 s · 444 MB |
+| naive-ui-admin | 68 | 1.61 s · 244 MB | 0.37 s · 259 MB | 0.09 s · 78 MB |
+| reka-ui | 470 | 0.58 s · 176 MB | 0.3 s · 226 MB | 0.19 s · 121 MB |
+| slidev | 121 | 0.72 s · 158 MB | 0.15 s · 203 MB | 0 s · 45 MB |
+| soybean-admin | 90 | 0.5 s · 161 MB | 0.1 s · 168 MB | 0 s · 45 MB |
+| vikunja | 249 | 0.87 s · 226 MB | 0.72 s · 360 MB | 0.35 s · 169 MB |
+| vitepress-client | 66 | 0.5 s · 141 MB | 0.09 s · 111 MB | 0.26 s · 103 MB |
+| vitepress-docs | 4 | 0.43 s · 131 MB | 0.06 s · 108 MB | 0.17 s · 82 MB |
+| vue-devtools | 31 | 0.42 s · 146 MB | 0.08 s · 124 MB | 0.27 s · 133 MB |
+| vue-element-plus-admin | 34 | 0.51 s · 133 MB | 0.15 s · 176 MB | 0.02 s · 53 MB |
+| vue-pure-admin | 255 | 0.75 s · 208 MB | 1.09 s · 356 MB | 0.24 s · 130 MB |
+| vue-vben-admin | 376 | 0.87 s · 225 MB | 1.1 s · 390 MB | 0.32 s · 166 MB |
+| vueuse | 214 | 0.61 s · 164 MB | 0.22 s · 268 MB | 0 s · 47 MB |
 
 Vue's conformance suite (vuejs/language-tools test-workspace/tsc): 251 of 252 cases identical on every leg; bun check = tsc 7 on 252 of 252. Different: `_failed_#4569` (see Known differences).
 
-Environment: Intel(R) Core(TM) Ultra 7 155U, 12 GB RAM (container limit 10 GB), Bun 1.4.4+absolute.2, Node v26.3.0, oracle tsc 7.0.2. Medians of 5 runs.
+Environment: Intel(R) Core(TM) Ultra 7 155U, 12 GB RAM (container limit 6 GB), Bun 1.4.4+absolute.2, Node v26.3.0, oracle tsc 7.0.2. Medians of 5 runs.
 

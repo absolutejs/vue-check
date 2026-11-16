@@ -17,16 +17,30 @@ of Vue's conformance suite, then by the existing four-way differential end to en
 
 ## Versions
 
-Native codegen covers exact `@vue/language-core` versions, starting with **3.3.14** (source:
-vuejs/language-tools tag `v3.3.14`). A project on any other version uses the JavaScript codegen,
-which stays exact. A new Vue release can make a project slower until it's ported, never wrong.
-Porting a release means porting its codegen diff and passing the bar again.
+Native codegen covers exact `@vue/language-core` versions: **3.3.9 to 3.3.14** (source:
+vuejs/language-tools tags `v3.3.9` to `v3.3.14`). The port is of the latest, and the binary is told
+the project's version. Where an earlier one writes something else, it writes what that one does:
+
+- **3.3.12 and 3.3.13** differ from the latest at a few points: where the macros are declared, the
+  template's code in a function of its own, the type of an event handler's arguments, how a custom
+  directive is called.
+- **3.3.9 to 3.3.11** are the codegen as it was before 3.3.12 restructured it. An expression's
+  identifiers are found by a different walk (`binding_references_old.rs`), each is read from the
+  context or with `.value` with no second pass, the bindings a template reads are declared as a
+  type of the context, and every helper is written as TypeScript whatever the script's language.
+
+Each version is compared with its own install, layer by layer, like the first. A project on any
+other version uses the JavaScript codegen, which stays exact. A new Vue release can make a project
+slower until it's ported, never wrong. Porting a release means porting its codegen diff and passing
+the bar again.
 
 Vue's template parser isn't part of `@vue/language-core`: it comes from the `@vue/compiler-dom` the
-project installed. The native parser reproduces `@vue/compiler-dom` **3.5.36 to 3.5.45** (the parser's
-source is the same across them, and each one installed in the benchmark is checked), with the 7.0
-line of the `entities` package it decodes entities with. A project that resolves any other version
-uses the JavaScript codegen.
+project installed. The native parser reproduces `@vue/compiler-dom` **3.5.35 to 3.5.45**, with the 7.0
+line of the `entities` package it decodes entities with. The parser's source is the same from 3.5.36
+on, and each version installed in the benchmark is checked. 3.5.35 differs in one behaviour, which the
+port follows when the project resolves it: a CDATA section outside any element makes that parser
+throw, which changes how it parses every later file, so such a file sends the project to the
+JavaScript codegen. A project that resolves any other version uses the JavaScript codegen.
 
 ## Stages
 
@@ -59,8 +73,20 @@ the generated file, the links and `codegen.json`.
 A project is one the port reproduces when:
 
 - its `@vue/language-core`, `@vue/compiler-dom` and `entities` are the versions above;
-- its `vueCompilerOptions` are the defaults. `target` and `typesRoot` are free (they are passed to
-  the binary), and so is `vitePressExtensions`, which only adds files the binary isn't asked about;
+- every `vueCompilerOptions` it sets is one the port reads, with a value the port reads it as. They
+  are passed to the binary, as `target` and `typesRoot` are:
+  - strict templates: `strictTemplates`, or `strictVModel` and the `checkUnknown…` options one by one;
+  - `fallthroughAttributes`, `checkRequiredFallthroughAttributes`, `fallthroughComponentNames`;
+  - the `infer…Dollar…` options and `jsxSlots`;
+  - `macros` and `composables` (the names `defineProps`, `useAttrs` and the rest go by);
+  - `dataAttributes` and `htmlAttributes`;
+  - `resolveStyleClassNames` and `strictCssModules`;
+  - `lib` and `optionsWrapper`.
+
+  `vitePressExtensions` is free too: it only adds files the binary isn't asked about. Any other
+  option that isn't at its default leaves the project to the JavaScript codegen: `plugins`,
+  `extensions`, `petiteVueExtensions`, `vapor`, `skipTemplateCodegen`, `resolveStyleImports` and
+  `experimentalModelPropName`;
 - no file changes how later files parse (see below). When one does, the whole project is generated
   again by the JavaScript codegen.
 
@@ -91,12 +117,24 @@ The port stands behind a result or it doesn't return one. Two cases go back to t
   itself (an offset before the start of the text, half of a surrogate pair), the native side marks
   the file unsupported instead of guessing. The same goes for a file that sets a compiler option in
   a comment (`<!-- @strictTemplates true -->`), a template in a language other than HTML, and a
-  directive expression in which a decoded entity sits next to characters outside ASCII (the
-  original then counts offsets in the decoded text).
+  `v-for` expression in which a decoded entity sits next to characters outside ASCII (the original
+  then cuts the source at offsets counted in the decoded text). And for a template expression that
+  contains `<!--` or `-->`: JavaScript reads those as the start of a comment in a script, and
+  TypeScript,
+  which parses the expression for the original, never does (`a<!--b` is `a < !--b`).
 - **A project with a file that changes how later files parse.** Vue's parser keeps its `v-pre` and
   `<pre>` state between files and never clears it: a file that ends inside `v-pre`, or that makes the
   parser throw halfway, changes how every file after it in the same process is parsed. Only the
   original, run in the original order, reproduces that.
+
+One case looks like those and is reproduced. The original locates the parts of a directive's
+expression by adding offsets in the expression's text to where it starts in the source. When an
+entity in it was decoded (`v-html="a + '&nbsp;é'"`), that text is shorter than the source, and the
+offsets are counted in UTF-16 units of the decoded text from there on. The port counts in bytes of
+the source and converts once, where the result leaves it (`utf16.rs`); for such a value that one
+conversion counts as the original does. The parser records the value; an offset the codegen counted
+in the written text instead (the expression is read a second way, as written, when it is checked
+again after its element) is marked so.
 
 ## The import reader
 
@@ -170,22 +208,58 @@ planted-error copy, and on all 252 conformance cases; the four-way differential 
 is unchanged with native codegen on. Native is on by default where the versions and options match,
 so `bench/codegen-bar.sh <project> <tsconfig> <out>` reruns the comparison for one project.
 
-The codegen phase and the whole run, as medians of five runs from `bench/run.ts` on the same
-machine as the README's tables. The native figures are those tables' figures; the JavaScript ones
-are the same projects with `VUE_CHECK_NATIVE=0`, measured before.
+The whole codegen step (`src/codegen.ts`: reading the project, generating every file, following
+imports and writing the folder) with each codegen, from one run of `bench/codegen-bar.sh` per
+project on the same machine as the README's tables. The folder each wrote is identical.
 
-| project | Vue files | native | codegen, JavaScript | codegen, native | whole run, JavaScript | whole run, native |
-|---|---|---|---|---|---|---|
-| gitea | 26 | 26 | 1.21 s · 238 MB | 0.69 s · 180 MB | 1.97 s | 1.41 s |
-| slidev | 121 | 119 | 1.55 s · 252 MB | 0.94 s · 211 MB | 1.71 s | 1.07 s |
-| vitepress-client | 66 | 66 | 1.47 s · 234 MB | 0.59 s · 171 MB | 2.05 s | 1.00 s |
-| vitepress-docs | 4 | 4 | 0.49 s · 151 MB | 0.44 s · 126 MB | 0.73 s | 0.68 s |
+| project | Vue files | generated natively | JavaScript codegen | native codegen | faster |
+|---|---|---|---|---|---|
+| 1panel | 623 | 623 | 7.29 s | 1.62 s | 4.5× |
+| dozzle | 219 | 219 | 3.33 s | 0.70 s | 4.7× |
+| gitea | 26 | 26 | 1.65 s | 0.53 s | 3.1× |
+| halo-console-components | 31 | 31 | 1.31 s | 0.49 s | 2.6× |
+| misskey | 592 | 592 | 5.11 s | 1.07 s | 4.8× |
+| reka-ui | 470 | 470 | 2.85 s | 0.76 s | 3.8× |
+| slidev | 121 | 120 | 2.12 s | 0.69 s | 3.1× |
+| soybean-admin | 90 | 90 | 1.78 s | 0.58 s | 3.1× |
+| vikunja | 249 | 248 | 3.05 s | 0.88 s | 3.5× |
+| vitepress-client | 66 | 66 | 1.57 s | 0.54 s | 2.9× |
+| vitepress-docs | 4 | 4 | 0.96 s | 0.47 s | 2.0× |
+| vue-devtools | 31 | 31 | 1.66 s | 0.61 s | 2.7× |
+| vue-element-plus-admin | 34 | 34 | 1.36 s | 0.52 s | 2.6× |
+| vue-pure-admin | 255 | 255 | 3.13 s | 0.85 s | 3.7× |
+| vue-vben-admin | 376 | 376 | 3.13 s | 0.94 s | 3.3× |
+| vueuse | 214 | 214 | 2.93 s | 0.73 s | 4.0× |
+
+The two files left to the JavaScript codegen are one with a comment that sets a compiler option
+(slidev) and one whose block layout the port declines (vikunja).
 
 The import reader lists the same imports as `preProcessFile` on every script file of six projects and
 Vue's conformance suite, `node_modules` included (about 326,000 files, 1.8 GB, on TypeScript 5.9.3,
 6.0.3 and the bridge), and on generated files (20,000 to 60,000 per version) on TypeScript 5.7.3,
 5.8.2, 5.8.3, 5.9.2, 5.9.3, 6.0.2 and 6.0.3. It declined under 1% of the generated files (half a
 surrogate pair), and no real one.
+
+Each option the port reads has its own branches in the codegen. The whole-file comparison is run
+with them set (`VUE_OPTIONS='{"strictTemplates":true}' native/oracle/run.sh …`), in thirteen
+combinations over the conformance suite's files and generated sets, with no differences; and the
+folder diff passes on every conformance case with the options each sets.
+
+A file with `<!-- @vue-expect-error -->` has a rule in its source map that counts the errors it
+sees, which is a function and not data. The code and the map are generated natively all the same;
+the map marks the rule, and when the checker reports an error in that file vue-check asks Volar
+itself about it, as it does for such a file from the JavaScript codegen.
+
+For 3.3.9 to 3.3.13, the same comparisons run against an install of each: every layer on the
+conformance suite's files and the generated sets, and the whole file again with the options the
+port reads set, with no differences. The folder diff passes on the benchmarked projects that run
+them: halo, vue-element-plus-admin and 1panel (3.3.9), vue-vben-admin, misskey, reka-ui and vikunja
+(3.3.11), soybean-admin (3.3.12), vue-pure-admin and its planted-error copy (3.3.13).
+
+For 3.3.9 to 3.3.11 three comparisons below the whole file are looser, each because those versions
+don't keep what is compared: the script analysis lists its bindings as ranges, not by name and
+kind; the port writes some runs of plain text in other pieces; and the names an expression reads
+aren't logged in order. The whole-file comparison, which is exact, covers what each of them feeds.
 
 The script codegen differs by Vue version (3.3, 3.4, 3.5 and 3.6 each change the code written). The
 whole-file comparison is run at each (`TARGET=3.4 native/oracle/run.sh …`), on the conformance

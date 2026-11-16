@@ -1,0 +1,88 @@
+{
+	"environment": {
+		"bun": "1.4.4+absolute.2",
+		"containerMemoryLimit": "6 GB",
+		"cpu": "Intel(R) Core(TM) Ultra 7 155U",
+		"node": "v26.3.0",
+		"projectTypeScript": "6.0.3",
+		"totalMemoryGB": 12,
+		"tsc7": "7.0.2",
+		"vueTsc": "3.3.9"
+	},
+	"invalidRuns": {
+		"vue-tsc": [],
+		"vue-check": [],
+		"vue-check (1 thread)": []
+	},
+	"oraclesFinished": true,
+	"cores": 8,
+	"identical": true,
+	"bunCheckMatchesTsc7": true,
+	"bunVsTsc7": {
+		"onlyBunCheck": [],
+		"onlyTsc7": []
+	},
+	"endToEnd": {
+		"onlyExpected": [],
+		"onlyVueCheck": []
+	},
+	"typeScript7Changes": {
+		"added": [
+			"src/components/log/file-drawer/index.vue(71,1): error TS2552: Cannot find name 'onBeforeUnmount'. Did you mean 'onbeforeinput'?",
+			"src/components/table/complex/ComplexTable.vue(523,1): error TS2552: Cannot find name 'onBeforeUnmount'. Did you mean 'onbeforeinput'?",
+			"src/views/app-store/components/tag.vue(204,1): error TS2552: Cannot find name 'onBeforeUnmount'. Did you mean 'onbeforeinput'?",
+			"src/views/login/index.vue(149,5): error TS2552: Cannot find name 'onUnmounted'. Did you mean 'onMounted'?",
+			"src/views/website/website/config/basic/index.vue(168,1): error TS2552: Cannot find name 'onUnmounted'. Did you mean 'onMounted'?"
+		],
+		"removed": [
+			"src/components/log/file-drawer/index.vue(71,1): error TS2304: Cannot find name 'onBeforeUnmount'.",
+			"src/components/table/complex/ComplexTable.vue(523,1): error TS2304: Cannot find name 'onBeforeUnmount'.",
+			"src/views/app-store/components/tag.vue(204,1): error TS2304: Cannot find name 'onBeforeUnmount'.",
+			"src/views/login/index.vue(149,5): error TS2304: Cannot find name 'onUnmounted'.",
+			"src/views/website/website/config/basic/index.vue(168,1): error TS2304: Cannot find name 'onUnmounted'."
+		]
+	},
+	"vueHandling": {
+		"onlyVueCheck": [],
+		"onlyVueTsc": []
+	},
+	"project": "/project",
+	"runs": 5,
+	"summary": {
+		"vue-tsc": {
+			"errors": 267,
+			"medianPeakRssMB": 2747,
+			"medianWallS": 29.21
+		},
+		"vue-check": {
+			"errors": 267,
+			"medianPeakRssMB": 827,
+			"medianWallS": 3.87,
+			"phases": {
+				"checkMB": 494,
+				"checkS": 0.89,
+				"codegenMB": 585,
+				"codegenS": 1.38,
+				"mapMB": 827,
+				"regeneratedFiles": 0,
+				"mapS": 1.36,
+				"vueFiles": 623
+			}
+		},
+		"vue-check (1 thread)": {
+			"errors": 267,
+			"medianPeakRssMB": 836,
+			"medianWallS": 5.86,
+			"phases": {
+				"checkMB": 433,
+				"checkS": 3.06,
+				"codegenMB": 583,
+				"codegenS": 1.34,
+				"mapMB": 836,
+				"regeneratedFiles": 0,
+				"mapS": 1.34,
+				"vueFiles": 623
+			}
+		}
+	}
+}

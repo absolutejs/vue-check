@@ -1,0 +1,82 @@
+{
+	"environment": {
+		"bun": "1.4.4+absolute.2",
+		"containerMemoryLimit": "6 GB",
+		"cpu": "Intel(R) Core(TM) Ultra 7 155U",
+		"node": "v26.3.0",
+		"projectTypeScript": "6.0.3",
+		"totalMemoryGB": 12,
+		"tsc7": "7.0.2",
+		"vueTsc": "3.3.11"
+	},
+	"invalidRuns": {
+		"vue-tsc": [],
+		"vue-check": [],
+		"vue-check (1 thread)": []
+	},
+	"oraclesFinished": true,
+	"cores": 8,
+	"identical": true,
+	"bunCheckMatchesTsc7": true,
+	"bunVsTsc7": {
+		"onlyBunCheck": [],
+		"onlyTsc7": []
+	},
+	"endToEnd": {
+		"onlyExpected": [],
+		"onlyVueCheck": []
+	},
+	"typeScript7Changes": {
+		"added": [
+			"src/pages/chat/room.vue(143,55): error TS2345: Argument of type 'Ref<{ [x: string]: any; [x: number]: any; [x: symbol]: Misskey.entities.ChatMessageLite; fromUser: any; reactions: any; }[], { [x: string]: any; [x: number]: any; [x: symbol]: Misskey.entities.ChatMessageLite; fromUser: any; reactions: any; }[] | NormalizedChatMessage[]>' is not assignable to parameter of type 'Ref<{ id: string; createdAt: string; }[], { id: string; createdAt: string; }[]> | ShallowRef<{ id: string; createdAt: string; }[]>'.",
+			"src/pages/settings/avatar-decoration.vue(39,30): error TS2739: Type 'AvatarDecorationBase' is missing the following properties from type '{ id: string; url: string; name: string; roleIdsThatCanBeUsedThisDecoration: string[]; }': id, url, name, roleIdsThatCanBeUsedThisDecoration"
+		],
+		"removed": [
+			"src/pages/chat/room.vue(143,55): error TS2345: Argument of type 'Ref<{ [x: string]: any; [x: number]: any; [x: symbol]: Misskey.entities.ChatMessageLite; fromUser: any; reactions: any; }[], NormalizedChatMessage[] | { [x: string]: any; [x: number]: any; [x: symbol]: Misskey.entities.ChatMessageLite; fromUser: any; reactions: any; }[]>' is not assignable to parameter of type 'Ref<{ id: string; createdAt: string; }[], { id: string; createdAt: string; }[]> | ShallowRef<{ id: string; createdAt: string; }[]>'.",
+			"src/pages/settings/avatar-decoration.vue(39,30): error TS2345: Argument of type 'AvatarDecorationBase' is not assignable to parameter of type '{ id: string; url: string; name: string; roleIdsThatCanBeUsedThisDecoration: string[]; }'."
+		]
+	},
+	"vueHandling": {
+		"onlyVueCheck": [],
+		"onlyVueTsc": []
+	},
+	"project": "/project/packages/frontend",
+	"runs": 5,
+	"summary": {
+		"vue-tsc": {
+			"errors": 687,
+			"medianPeakRssMB": 2198,
+			"medianWallS": 26.47
+		},
+		"vue-check": {
+			"errors": 687,
+			"medianPeakRssMB": 558,
+			"medianWallS": 2.79,
+			"phases": {
+				"checkMB": 460,
+				"checkS": 0.7,
+				"codegenMB": 326,
+				"codegenS": 0.86,
+				"mapMB": 444,
+				"regeneratedFiles": 0,
+				"mapS": 1.09,
+				"vueFiles": 592
+			}
+		},
+		"vue-check (1 thread)": {
+			"errors": 687,
+			"medianPeakRssMB": 490,
+			"medianWallS": 4.34,
+			"phases": {
+				"checkMB": 392,
+				"checkS": 2.52,
+				"codegenMB": 328,
+				"codegenS": 0.83,
+				"mapMB": 451,
+				"regeneratedFiles": 0,
+				"mapS": 0.97,
+				"vueFiles": 592
+			}
+		}
+	}
+}

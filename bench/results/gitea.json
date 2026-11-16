@@ -1,7 +1,7 @@
 {
 	"environment": {
 		"bun": "1.4.4+absolute.2",
-		"containerMemoryLimit": "10 GB",
+		"containerMemoryLimit": "6 GB",
 		"cpu": "Intel(R) Core(TM) Ultra 7 155U",
 		"node": "v26.3.0",
 		"projectTypeScript": "6.0.3",
@@ -39,36 +39,36 @@
 	"summary": {
 		"vue-tsc": {
 			"errors": 0,
-			"medianPeakRssMB": 1012,
-			"medianWallS": 9.97
+			"medianPeakRssMB": 1007,
+			"medianWallS": 11.24
 		},
 		"vue-check": {
 			"errors": 0,
-			"medianPeakRssMB": 316,
-			"medianWallS": 1.41,
+			"medianPeakRssMB": 309,
+			"medianWallS": 1.07,
 			"phases": {
-				"checkMB": 277,
-				"checkS": 0.36,
-				"codegenMB": 180,
-				"codegenS": 0.69,
-				"mapMB": 142,
+				"checkMB": 270,
+				"checkS": 0.41,
+				"codegenMB": 149,
+				"codegenS": 0.58,
+				"mapMB": 58,
 				"regeneratedFiles": 0,
-				"mapS": 0.35,
+				"mapS": 0.04,
 				"vueFiles": 26
 			}
 		},
 		"vue-check (1 thread)": {
 			"errors": 0,
-			"medianPeakRssMB": 272,
-			"medianWallS": 1.88,
+			"medianPeakRssMB": 273,
+			"medianWallS": 1.33,
 			"phases": {
 				"checkMB": 232,
-				"checkS": 0.88,
-				"codegenMB": 172,
-				"codegenS": 0.66,
-				"mapMB": 139,
+				"checkS": 0.85,
+				"codegenMB": 147,
+				"codegenS": 0.47,
+				"mapMB": 63,
 				"regeneratedFiles": 0,
-				"mapS": 0.3,
+				"mapS": 0.03,
 				"vueFiles": 26
 			}
 		}

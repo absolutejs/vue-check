@@ -1,0 +1,79 @@
+{
+	"environment": {
+		"bun": "1.4.4+absolute.2",
+		"containerMemoryLimit": "6 GB",
+		"cpu": "Intel(R) Core(TM) Ultra 7 155U",
+		"node": "v26.3.0",
+		"projectTypeScript": "5.8.3",
+		"totalMemoryGB": 12,
+		"tsc7": "7.0.2",
+		"vueTsc": "3.3.11"
+	},
+	"invalidRuns": {
+		"vue-tsc": [],
+		"vue-check": [],
+		"vue-check (1 thread)": []
+	},
+	"oraclesFinished": true,
+	"cores": 8,
+	"identical": true,
+	"bunCheckMatchesTsc7": true,
+	"bunVsTsc7": {
+		"onlyBunCheck": [],
+		"onlyTsc7": []
+	},
+	"endToEnd": {
+		"onlyExpected": [],
+		"onlyVueCheck": []
+	},
+	"typeScript7Changes": {
+		"added": [
+			"src/Select/SelectRoot.vue(115,3): error TS2769: No overload matches this call.",
+			"src/Tree/TreeRoot.vue(125,3): error TS2769: No overload matches this call."
+		],
+		"removed": []
+	},
+	"vueHandling": {
+		"onlyVueCheck": [],
+		"onlyVueTsc": []
+	},
+	"project": "/project/packages/core",
+	"runs": 5,
+	"summary": {
+		"vue-tsc": {
+			"errors": 0,
+			"medianPeakRssMB": 634,
+			"medianWallS": 3.81
+		},
+		"vue-check": {
+			"errors": 2,
+			"medianPeakRssMB": 273,
+			"medianWallS": 1.1,
+			"phases": {
+				"checkMB": 226,
+				"checkS": 0.3,
+				"codegenMB": 176,
+				"codegenS": 0.58,
+				"mapMB": 121,
+				"regeneratedFiles": 0,
+				"mapS": 0.19,
+				"vueFiles": 470
+			}
+		},
+		"vue-check (1 thread)": {
+			"errors": 2,
+			"medianPeakRssMB": 231,
+			"medianWallS": 1.83,
+			"phases": {
+				"checkMB": 184,
+				"checkS": 1.07,
+				"codegenMB": 175,
+				"codegenS": 0.56,
+				"mapMB": 121,
+				"regeneratedFiles": 0,
+				"mapS": 0.2,
+				"vueFiles": 470
+			}
+		}
+	}
+}

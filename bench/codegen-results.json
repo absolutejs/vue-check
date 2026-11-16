@@ -1,0 +1,114 @@
+[
+	{
+		"name": "1panel",
+		"files": 623,
+		"native": 623,
+		"javascriptMs": 7285,
+		"nativeMs": 1616
+	},
+	{
+		"name": "dozzle",
+		"files": 219,
+		"native": 219,
+		"javascriptMs": 3332,
+		"nativeMs": 703
+	},
+	{
+		"name": "gitea",
+		"files": 26,
+		"native": 26,
+		"javascriptMs": 1646,
+		"nativeMs": 530
+	},
+	{
+		"name": "halo-console-components",
+		"files": 31,
+		"native": 31,
+		"javascriptMs": 1306,
+		"nativeMs": 495
+	},
+	{
+		"name": "misskey",
+		"files": 592,
+		"native": 592,
+		"javascriptMs": 5110,
+		"nativeMs": 1066
+	},
+	{
+		"name": "reka-ui",
+		"files": 470,
+		"native": 470,
+		"javascriptMs": 2853,
+		"nativeMs": 755
+	},
+	{
+		"name": "slidev",
+		"files": 121,
+		"native": 120,
+		"javascriptMs": 2122,
+		"nativeMs": 694
+	},
+	{
+		"name": "soybean-admin",
+		"files": 90,
+		"native": 90,
+		"javascriptMs": 1778,
+		"nativeMs": 578
+	},
+	{
+		"name": "vikunja",
+		"files": 249,
+		"native": 248,
+		"javascriptMs": 3054,
+		"nativeMs": 875
+	},
+	{
+		"name": "vitepress-client",
+		"files": 66,
+		"native": 66,
+		"javascriptMs": 1575,
+		"nativeMs": 539
+	},
+	{
+		"name": "vitepress-docs",
+		"files": 4,
+		"native": 4,
+		"javascriptMs": 962,
+		"nativeMs": 471
+	},
+	{
+		"name": "vue-devtools",
+		"files": 31,
+		"native": 31,
+		"javascriptMs": 1655,
+		"nativeMs": 610
+	},
+	{
+		"name": "vue-element-plus-admin",
+		"files": 34,
+		"native": 34,
+		"javascriptMs": 1359,
+		"nativeMs": 520
+	},
+	{
+		"name": "vue-pure-admin",
+		"files": 255,
+		"native": 255,
+		"javascriptMs": 3129,
+		"nativeMs": 854
+	},
+	{
+		"name": "vue-vben-admin",
+		"files": 376,
+		"native": 376,
+		"javascriptMs": 3130,
+		"nativeMs": 936
+	},
+	{
+		"name": "vueuse",
+		"files": 214,
+		"native": 214,
+		"javascriptMs": 2929,
+		"nativeMs": 730
+	}
+]
