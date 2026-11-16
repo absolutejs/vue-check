@@ -12,14 +12,16 @@ duplicate or as fixed for a narrower case.
 
 ## Current status
 
-Last checked: **2026-11-13**, on `vue-tsc` / `@vue/language-core` **3.3.14**, vue 3.5.25, TypeScript
+Last checked: **2026-11-16**, on `vue-tsc` / `@vue/language-core` **3.3.14**, vue 3.5.25, TypeScript
 5.9.3, Bun 1.4.4.
 
 | #   | Problem                                                    | Upstream                       | Fixed? |
 | --- | ---------------------------------------------------------- | ------------------------------ | ------ |
 | 1   | A prop value containing `//` hides the props after it      | vuejs/language-tools#6360 open | No     |
 | 2   | An empty event handler generates code that doesn't parse   | vuejs/language-tools#6361 open | No     |
-| 3   | `bun check` output carries no error length                 | not filed                      | No     |
+| 3   | `bun check` output carries no error length                 | oven-sh/bun#45708 open         | No     |
+| 4   | `bun check --threads=1` reports a TS2589 others don't, repeated | not filed (no public repro) | No     |
+| 5   | `bun check` reports a TS2589 in the first file that hits it only | oven-sh/bun#46766 closed   | Not in a release |
 
 ---
 
@@ -106,17 +108,20 @@ Verify on that version that `<button @click="">` and `<button @click.stop="">` g
 ## 3. `bun check` output carries no error length
 
 - **Dependency:** Bun (`bun check`)
-- **Status:** **not filed.** A feature gap rather than a bug: `bun check --no-pretty` prints `tsc`'s
-  one-line format, `file(line,column): error TSxxxx: message`, which has no length either. Filing it
-  means asking for a machine-readable output (for example `--format=json` with each diagnostic's start
-  and length), which would help any tool that maps diagnostics.
+- **Status:** open, filed by someone else 2026-10-17 (found 2026-11-16)
+    - **oven-sh/bun#45708**: https://github.com/oven-sh/bun/issues/45708, "`bun check`:
+      machine-readable diagnostics with spans (start + length)". It asks for a JSON reporter
+      (`--format=json`) with each diagnostic's start and length, for a tool of the same kind as this
+      one. A feature gap rather than a bug: `bun check --no-pretty` prints `tsc`'s one-line format,
+      `file(line,column): error TSxxxx: message`, which has no length either.
 
 **Symptom.** Which source-map segments an error touches depends on its span, and Volar decides whether
 `vue-tsc` reports an error from its start **and** end. With only a start, vue-check has to reconstruct
 the length.
 
-**Workaround in vue-check.** `spanAt` in `src/cli.ts` takes the length from TypeScript's parser on the
-generated file: the parser's own diagnostic for a syntax error, the innermost syntax node starting at
+**Workaround in vue-check.** `spanAt` in `src/cli.ts` reads the length from the text where the error
+starts on a plain name, a one-line string or a name read from the component, and otherwise takes it
+from TypeScript's parser on the generated file: the parser's own diagnostic for a syntax error, the innermost syntax node starting at
 the position otherwise, and the comment for an unused `@ts-expect-error`. It matches on every project
 benchmarked and on 251 of 252 conformance cases. The exception is `_failed_#4569` (a declaration-emit
 error, TS4025, on Vue's internal export), whose span isn't the node at its start (README "Known
@@ -125,3 +130,53 @@ differences").
 **Remove when:** `bun check` can print each diagnostic's length. Then read the length from the output,
 delete `spanAt`, `SPAN` and the lazy TypeScript parser in `src/cli.ts`, and rerun the conformance suite:
 `_failed_#4569` should become identical.
+
+---
+
+## 4. `bun check --threads=1` reports a TS2589 the other runs don't, once per file that reaches it
+
+- **Dependency:** Bun (`bun check`)
+- **Status:** **not filed.** Reproduced on stock Bun 1.4.4 (2026-11-16), but only on a private
+  project, and a report needs a project that can be shared. Two attempts to build one from public
+  packages (a recursive type; an Elysia app of the same shape, up to 90 plugins of 60 routes) didn't
+  show it.
+
+**Symptom.** On one project (an Elysia server whose app is a chain of 44 `.use()` calls, and 49
+files that read the app's type), with the same generated program:
+
+| run                                         | errors | TS2589                              |
+| ------------------------------------------- | ------ | ----------------------------------- |
+| `bun check` (default threads, or 2, or 4)   | 291    | 1                                   |
+| `tsc` 7.0.2 (default, `--checkers 1`, `--singleThreaded`) | 291 | 1                        |
+| `bun check --threads=1`                     | 318    | 28: the same one, and one more at the start of the chain, printed 27 times |
+
+So with one thread `bun check` reports "Type instantiation is excessively deep and possibly infinite"
+on an expression no other run reports it on, and prints that same line once for each of 27 files.
+
+**Effect on vue-check.** Only with `--threads=1`: the output then has those extra lines. The default
+run is unaffected, and it is the one the differential compares with `tsc` 7.
+
+**Workaround in vue-check.** None.
+
+**To file:** a project that shows it and can be public. The likely shape is a type that is expensive
+to instantiate, reached from many files, which one checker instantiates more than once.
+
+---
+
+## 5. `bun check` reports a repeated TS2589 only in the first file that hits it
+
+- **Dependency:** Bun (`bun check`)
+- **Status:** closed upstream 2026-10-24, two days after Bun 1.4.4 was released, so the fix isn't in a
+  release yet. Filed by someone else.
+    - **oven-sh/bun#46766**: https://github.com/oven-sh/bun/issues/46766
+
+**Symptom.** When several files hit the same excessively deep instantiation, `tsc` 7.0.2 reports
+TS2589 in each of them and `bun check` 1.4.4 in the first only. Seen here (2026-11-16) on a generated
+Elysia app of 90 plugins with 30 clients of its type: `tsc` 7.0.2 reports 4, `bun check` 1.
+
+**Effect on vue-check.** On such a project the result is `vue-tsc`'s minus those repeats, and the
+benchmark's "bun check = tsc 7" comparison would say so. No benchmarked project has it.
+
+**Workaround in vue-check.** None.
+
+**Retire when:** a Bun release reports each of them; rerun the comparison on such a project.
