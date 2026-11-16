@@ -122,10 +122,18 @@ const PORTED_FUNCTIONS = [
  * an identifier alike, apart from the eight it names in its own text. */
 const PORTED_VARIABLES = ['unicodeESNextIdentifierStart', 'unicodeESNextIdentifierPart', 'shebangTriviaRegex', 'mergeConflictMarkerLength', 'textToKeyword'];
 
+const FORWARD = /^\s*module\.exports\s*=\s*require\((["'])([^"']+)\1\);?\s*$/;
+const FORWARD_MAX_BYTES = 1024;
+
 /** A hash of the source of everything the import reader reproduces, in the
  * TypeScript at `file` (its lib/typescript.js); null when a part isn't found. */
-export const importReaderSignature = (file: string) => {
+export const importReaderSignature = (file: string): string | null => {
 	const source = readFileSync(file);
+	/* A package that is another TypeScript under its own name
+	 * (@typescript/typescript6) has one line there: the TypeScript it loads
+	 * is the one to read. */
+	const [, , forwarded] = source.length < FORWARD_MAX_BYTES ? (FORWARD.exec(source.toString('utf8')) ?? []) : [];
+	if (forwarded !== undefined) return importReaderSignature(createRequire(file).resolve(forwarded));
 	const hash = createHash('sha256');
 	const part = (start: string, end: string) => {
 		const from = source.indexOf(start);

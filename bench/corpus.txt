@@ -21,3 +21,4 @@ vue-devtools|vuejs/devtools|c26960af88b586fd19bef0653528d21a0d46f14b|vue-devtool
 1panel|1Panel-dev/1Panel|071653f5b7f63546328aa2b42bb1a41a2d4c97a7|1panel/frontend|-|tsconfig.json|--skipLibCheck|4096
 misskey|misskey-dev/misskey|f98f05b250981ddd754d9f02f47bcff124520ab3|misskey/packages/frontend|misskey|tsconfig.json|--skipLibCheck|4096
 directus|directus/directus|ed30e578b2c29b5b64159ef54e0a4739628144fd|directus/app|directus|tsconfig.json|--skipLibCheck|4096
+airi|moeru-ai/airi|26b691f5739b4c9e311cd4b702ff2f8eea501208|airi/apps/stage-web|airi|tsconfig.json|--skipLibCheck|4096
