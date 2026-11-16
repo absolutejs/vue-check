@@ -71,7 +71,8 @@ const packageRoots = [
  * the order files enter a program decides the order types are created, and
  * so how TypeScript prints them in messages. */
 const generatedFor = new Map(Object.entries(maps).map(([file, map]) => [join(root, map.source), join(root, file)]));
-const project = parseProject(projectTs, tsconfig, extensions);
+const extendedConfigs = new Map<string, unknown>();
+const project = parseProject(projectTs, tsconfig, extensions, extendedConfigs);
 const files = project.fileNames.flatMap((file) => {
 	if (!extensions.some((extension) => file.endsWith(extension))) return [file];
 	const generatedFile = generatedFor.get(file);
@@ -134,4 +135,12 @@ writeFileSync(
  * (an internal table: without it, every error is decided by Volar itself). */
 const diagnostics = (projectTs as unknown as { Diagnostics?: Record<string, { code: number }> }).Diagnostics ?? {};
 const diagnosticCodes = [...new Set(Object.values(diagnostics).map((message) => message.code))].sort((a, b) => a - b);
-writeFileSync(join(outDir, 'codegen.json'), JSON.stringify({ ...serialize(maps, codeFeatures, diagnosticCodes), unparsed }));
+/* What the cache (cache.ts) needs to know this run read: the configs, the
+ * folders the tsconfig includes, and the ones its `exclude` names outright. */
+const excluded = ((project.raw as { exclude?: unknown } | undefined)?.exclude ?? []) as unknown[];
+const reads = {
+	configs: [tsconfig, ...extendedConfigs.keys()],
+	skipped: excluded.flatMap((entry) => (typeof entry === 'string' && !/[*?]/.test(entry) ? [resolve(dirname(tsconfig), entry)] : [])),
+	trees: Object.keys(project.wildcardDirectories ?? {})
+};
+writeFileSync(join(outDir, 'codegen.json'), JSON.stringify({ ...serialize(maps, codeFeatures, diagnosticCodes), reads, unparsed }));

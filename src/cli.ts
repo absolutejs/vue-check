@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import * as ownSourceMap from '@volar/source-map';
 import type { SourceMap, UnparsedFile } from './generate';
+import { keyOf, readsOf, remember, remembered } from './cache';
 import { deserialize, type Serialized } from './serialize';
 
 /*
@@ -46,6 +47,31 @@ const outDir = resolve(root, argument('--out-dir') ?? '.vue-check');
  * check (each its own process) and mapping errors back (this one). */
 const phasesFile = process.env.VUE_CHECK_PHASES;
 
+/* The last run's result, when nothing it read has changed (cache.ts):
+ * printed again, and nothing else is done. --no-cache (or
+ * VUE_CHECK_CACHE=0) always runs; so does a run that is being measured or
+ * verified. */
+const useCache = !process.argv.includes('--no-cache') && process.env.VUE_CHECK_CACHE !== '0' && !phasesFile && !process.env.VUE_CHECK_VERIFY_SPANS;
+const cacheKey = keyOf(
+	root,
+	tsconfig,
+	outDir,
+	process.argv.slice(2).filter((value) => value !== '--no-cache')
+);
+if (useCache) {
+	const last = remembered(outDir, cacheKey);
+	if (last) {
+		process.stdout.write(last.output);
+		process.exit(last.exitCode);
+	}
+}
+/* What this run prints, kept to be remembered. */
+const printed: string[] = [];
+const print = (line: string) => {
+	printed.push(line);
+	console.log(line);
+};
+
 const codegenStarted = performance.now();
 const codegen = Bun.spawnSync([process.execPath, join(import.meta.dir, 'codegen.ts'), root, tsconfig, outDir], {
 	cwd: root,
@@ -57,7 +83,10 @@ if (codegen.exitCode !== 0) {
 	console.error('vue-check: Vue codegen failed (above), so the project was NOT type-checked.');
 	process.exit(3);
 }
-const codegenResult = JSON.parse(readFileSync(join(outDir, 'codegen.json'), 'utf8')) as Serialized & { unparsed: UnparsedFile[] };
+const codegenResult = JSON.parse(readFileSync(join(outDir, 'codegen.json'), 'utf8')) as Serialized & {
+	reads: { configs: string[]; skipped: string[]; trees: string[] };
+	unparsed: UnparsedFile[];
+};
 const unparsedFiles = codegenResult.unparsed;
 const checkConfig = join(outDir, 'tsconfig.json');
 
@@ -66,7 +95,7 @@ const threads = argument('--threads');
 const OWN = new Set(['-p', '--project', '--threads', '--out-dir']);
 const passThrough = process.argv.slice(2).filter((value, index, all) => {
 	const name = value.split('=')[0] ?? '';
-	if (OWN.has(name)) return false;
+	if (OWN.has(name) || name === '--no-cache') return false;
 	const previous = all[index - 1];
 
 	return !(previous && OWN.has(previous) && !previous.includes('='));
@@ -75,10 +104,12 @@ const passThrough = process.argv.slice(2).filter((value, index, all) => {
  * codegen and mapping, only the checker differs. The benchmark uses real
  * tsc 7 this way to prove bun check agrees with TypeScript 7. */
 const oracleTsc = process.env.VUE_CHECK_TSC;
+/* The checker names every file it read, for the cache to watch. */
+const listFiles = useCache ? ['--listFiles'] : [];
 const checkStarted = performance.now();
 const checked = Bun.spawnSync(
 	oracleTsc
-		? [oracleTsc, '-p', checkConfig, '--noEmit', '--pretty', 'false', ...passThrough]
+		? [oracleTsc, '-p', checkConfig, '--noEmit', '--pretty', 'false', ...listFiles, ...passThrough]
 		: [
 				process.execPath,
 				'check',
@@ -89,6 +120,7 @@ const checked = Bun.spawnSync(
 				// Type-check, never a project's own `check` script in its place.
 				'--no-script',
 				...(threads ? [`--threads=${threads}`] : []),
+				...listFiles,
 				...passThrough
 			],
 	{ cwd: root, stderr: 'pipe', stdout: 'pipe' }
@@ -530,8 +562,8 @@ for (const line of lines) {
 			if (line.startsWith('error TS6059: ') && isOwnRootDirError(line.slice('error TS6059: '.length))) continue;
 			reported++;
 			errors++;
-			console.log(line);
-		} else if (line.startsWith(' ') && errors > 0) console.log(line);
+			print(line);
+		} else if (line.startsWith(' ') && errors > 0) print(line);
 		continue;
 	}
 	reported++;
@@ -545,7 +577,7 @@ for (const line of lines) {
 		/* An option error the generated config inherits: where vue-tsc reports
 		 * it, at the option in the project's own config (or a config it extends). */
 		const at = optionPosition(message ?? '');
-		console.log(`${at}: ${severity} ${code}: ${sourcePaths(message ?? '')}`);
+		print(`${at}: ${severity} ${code}: ${sourcePaths(message ?? '')}`);
 		errors++;
 		continue;
 	}
@@ -568,7 +600,7 @@ for (const line of lines) {
 		continue;
 	}
 	errors++;
-	console.log(`${map ? map.source : file}(${position.line},${position.column}): ${severity} ${code}: ${sourcePaths(message ?? '')}`);
+	print(`${map ? map.source : file}(${position.line},${position.column}): ${severity} ${code}: ${sourcePaths(message ?? '')}`);
 }
 if (phasesFile)
 	writeFileSync(
@@ -619,4 +651,24 @@ if (checked.exitCode !== 0 && reported === 0) {
 	console.error('vue-check: the checker failed (above), so the project was NOT type-checked.');
 	process.exit(3);
 }
-process.exit(errors > 0 ? 2 : 0);
+const exitCode = errors > 0 ? 2 : 0;
+if (useCache) {
+	/* The checker's list of the program: each line that is a path and
+	 * nothing else. */
+	const programFiles = lines.filter((line) => isAbsolute(line) && !ERROR_LINE.test(line));
+	const reads = readsOf({
+		...codegenResult.reads,
+		outDir,
+		programFiles,
+		root,
+		sources: Object.values(codegenResult.maps).map((map) => join(root, map.source))
+	});
+	/* Without the list there is no knowing what was read. */
+	if (programFiles.length > 0)
+		try {
+			remember(outDir, cacheKey, reads, exitCode, printed.map((line) => `${line}\n`).join(''));
+		} catch {
+			// A result that can't be written is one that isn't remembered.
+		}
+}
+process.exit(exitCode);

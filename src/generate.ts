@@ -123,7 +123,7 @@ const EXTENSIONS: Record<string, '.js' | '.jsx' | '.ts' | '.tsx'> = {
 /** Every root file of the project, Vue's files included (every extension
  * Vue is configured for: .vue, and e.g. .md for VitePress), in the order tsc
  * (and vue-tsc) lists them. */
-export const parseProject = (ts: typeof ownTs, tsconfig: string, extensions: string[]) => {
+export const parseProject = (ts: typeof ownTs, tsconfig: string, extensions: string[], extended?: Map<string, unknown>) => {
 	const config = ts.readConfigFile(tsconfig, ts.sys.readFile).config ?? {};
 
 	return ts.parseJsonConfigFileContent(
@@ -133,7 +133,9 @@ export const parseProject = (ts: typeof ownTs, tsconfig: string, extensions: str
 		undefined,
 		tsconfig,
 		undefined,
-		extensions.map((extension) => ({ extension, isMixedContent: true, scriptKind: ts.ScriptKind.Deferred }))
+		extensions.map((extension) => ({ extension, isMixedContent: true, scriptKind: ts.ScriptKind.Deferred })),
+		// Filled with each config this one extends, by its path.
+		extended as Map<string, import('typescript').ExtendedConfigCacheEntry> | undefined
 	);
 };
 export const projectFilesOf = (ts: typeof ownTs, tsconfig: string, extensions: string[]) =>

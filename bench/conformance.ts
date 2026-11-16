@@ -66,7 +66,7 @@ type CaseResult = {
 const checkCase = async (name: string): Promise<CaseResult> => {
 	const cwd = join(casesDir, name);
 	const vueCheck = (tsc?: string) =>
-		run([process.execPath, join(tool, 'src/cli.ts'), '-p', 'tsconfig.json'], cwd, tsc ? { VUE_CHECK_TSC: tsc } : {});
+		run([process.execPath, join(tool, 'src/cli.ts'), '-p', 'tsconfig.json', '--no-cache'], cwd, tsc ? { VUE_CHECK_TSC: tsc } : {});
 	const oracle = await run(['node', vueTsc, '--noEmit', '-p', 'tsconfig.json', '--pretty', 'false'], cwd);
 	const withProjectTs = await vueCheck(projectTsc);
 	const withTsc7 = await vueCheck(tsc7);
