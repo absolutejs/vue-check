@@ -165,17 +165,35 @@ if (regenerate.size > 0) {
 	}
 }
 
-const offsetOf = (text: string, line: number, column: number) => {
-	const lines = text.split('\n');
-	let offset = 0;
-	for (let index = 0; index < line - 1; index++) offset += (lines[index]?.length ?? 0) + 1;
+/* Where each line of a text starts, worked out once per text: a project can
+ * have thousands of errors in a few files. */
+const lineStartsOf = new Map<string, number[]>();
+const lineStarts = (text: string) => {
+	let starts = lineStartsOf.get(text);
+	if (!starts) {
+		starts = [0];
+		for (let index = text.indexOf('\n'); index !== -1; index = text.indexOf('\n', index + 1)) starts.push(index + 1);
+		lineStartsOf.set(text, starts);
+	}
 
-	return offset + column - 1;
+	return starts;
+};
+const offsetOf = (text: string, line: number, column: number) => {
+	const starts = lineStarts(text);
+
+	return (starts[Math.min(line - 1, starts.length)] ?? text.length + 1) + column - 1;
 };
 const positionOf = (text: string, offset: number) => {
-	const before = text.slice(0, offset).split('\n');
+	const starts = lineStarts(text);
+	let low = 0;
+	let high = starts.length - 1;
+	while (low < high) {
+		const middle = (low + high + 1) >> 1;
+		if ((starts[middle] ?? 0) <= offset) low = middle;
+		else high = middle - 1;
+	}
 
-	return { column: (before.at(-1)?.length ?? 0) + 1, line: before.length };
+	return { column: offset - (starts[low] ?? 0) + 1, line: low + 1 };
 };
 
 /* Volar's own SourceMap (the project's, as vue-tsc loads it), so an error is
@@ -217,7 +235,7 @@ const volarMaps = new Map<SourceMap, VolarSourceMap>();
 /* tsc-style output gives where an error starts, not its length. A comment
  * there (an unused @ts-expect-error directive) is the span, as TypeScript
  * reports it; otherwise the token there (a name or a string). */
-const SPAN = /^(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/|[\p{L}\p{N}_$]+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/u;
+const SPAN = /(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/|[\p{L}\p{N}_$]+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/uy;
 
 /* The error's length, which tsc-style output leaves out. TypeScript reports
  * an error on a syntax node, and punctuation isn't one, so the innermost node
@@ -261,9 +279,60 @@ const syntaxErrorAt = (file: string, text: string, position: number, code: strin
 		(parsedFile(file, text) as unknown as { parseDiagnostics?: { code: number; length: number; messageText: unknown; start: number }[] })
 			.parseDiagnostics ?? []
 	).find((diagnostic) => diagnostic.start === position && String(diagnostic.code) === code);
-const spanAt = (file: string, text: string, position: number, code: string) => {
-	const lexical = SPAN.exec(text.slice(position))?.[0];
-	if (lexical?.startsWith('//') || lexical?.startsWith('/*')) return lexical.length;
+/* An error's length read from the text, for the two tokens most errors start
+ * on. A plain name: ASCII, not a keyword, and not one of the objects a template's
+ * names are read from. In a file that isn't JSX, TypeScript's parser makes
+ * exactly an Identifier of it, and no smaller node starts there, so its
+ * length is the error's without parsing the file. Anything else (a keyword
+ * starts a larger node, a name outside ASCII may be longer than this reads)
+ * is asked of the parser. */
+const PLAIN_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*/;
+const KEYWORDS = new Set(
+	(
+		'abstract accessor any as asserts assert async await bigint boolean break case catch class const constructor continue debugger declare default defer delete ' +
+		'do else enum export extends false finally for from function get global if implements import in infer instanceof interface intrinsic is keyof let module ' +
+		'namespace never new null number object of out override package private protected public readonly require return satisfies set static string super ' +
+		'switch symbol this throw true try type typeof undefined unique unknown using var void while with yield'
+	).split(' ')
+);
+/* A string on one line, as TypeScript scans it: to the closing quote, a
+ * backslash taking the character after it. It is one node, and none smaller
+ * starts there. One the pattern doesn't end (a line continuation, a missing
+ * quote) is asked of the parser. */
+const PLAIN_STRING = /(?:"(?:[^"\\\r\n\u2028\u2029]|\\[^\r\n\u2028\u2029])*"|'(?:[^'\\\r\n\u2028\u2029]|\\[^\r\n\u2028\u2029])*')/y;
+const plainTokenAt = (file: string, text: string, position: number) => {
+	if (file.endsWith('x')) return null;
+	const first = text.charCodeAt(position);
+	if (first === 34 || first === 39) {
+		PLAIN_STRING.lastIndex = position;
+
+		return PLAIN_STRING.exec(text)?.[0].length ?? null;
+	}
+	const name = plainName(text, position);
+	if (name === null || KEYWORDS.has(name)) return null;
+	if (!CONTEXT_OBJECTS.has(name)) return name.length;
+	/* A name read from the component, `__VLS_ctx.name`: the error is on the
+	 * access (see parsedSpanAt), which ends with the name. After `typeof` the
+	 * two may be a type's qualified name and not an access, so that is asked
+	 * of the parser, as is anything but a dot and a plain name. */
+	if (text.charCodeAt(position + name.length) !== 46 || TYPEOF_BEFORE.test(text.slice(Math.max(0, position - 64), position))) return null;
+	const property = plainName(text, position + name.length + 1);
+
+	return property === null ? null : name.length + 1 + property.length;
+};
+const TYPEOF_BEFORE = /typeof\s*$/;
+const plainName = (text: string, position: number) => {
+	const name = PLAIN_NAME.exec(text.slice(position, position + 256))?.[0];
+	if (name === undefined || name.length === 256) return null;
+	const next = text.charCodeAt(position + name.length);
+
+	// More of the name may follow: an escape, or a character outside ASCII.
+	return next === 92 || next > 127 ? null : name;
+};
+/* How many spans were read from the text, and how many needed the parser. */
+const spans = { parsed: 0, read: 0 };
+const parsedSpanAt = (file: string, text: string, position: number, code: string, lexical: string | undefined) => {
+	spans.parsed++;
 	const ts = projectTypeScript();
 	const sourceFile = parsedFile(file, text);
 	/* A syntax error's span is the parser's own diagnostic: exact. */
@@ -286,6 +355,20 @@ const spanAt = (file: string, text: string, position: number, code: string) => {
 
 	return Math.max(1, found ? found.end - position : (lexical?.length ?? 1));
 };
+const spanAt = (file: string, text: string, position: number, code: string) => {
+	SPAN.lastIndex = position;
+	const lexical = SPAN.exec(text)?.[0];
+	if (lexical?.startsWith('//') || lexical?.startsWith('/*')) return lexical.length;
+	/* Only once the checker is known to have type-checked: until then an
+	 * error may be a syntax error, whose span is the parser's. */
+	const name = typeChecked ? plainTokenAt(file, text, position) : null;
+	if (name === null) return parsedSpanAt(file, text, position, code, lexical);
+	if (verifySpans && parsedSpanAt(file, text, position, code, lexical) !== name)
+		throw new Error(`vue-check: ${file} at ${position}: TS${code} spans ${name} read from the text, and not as parsed`);
+	spans.read++;
+
+	return name;
+};
 /* What Vue's codegen reads a template's names from. */
 const CONTEXT_OBJECTS = new Set(['__VLS_ctx', '__VLS_dollars']);
 
@@ -295,12 +378,12 @@ const CONTEXT_OBJECTS = new Set(['__VLS_ctx', '__VLS_dollars']);
  * with its diagnostic filter (shouldReportDiagnostics, or the same rules as
  * data), as Volar's transformDiagnostic calls it for vue-tsc.
  */
-const generatedTexts = new Map<string, string>();
-const generatedText = (file: string) => {
-	let text = generatedTexts.get(file);
+const fileTexts = new Map<string, string>();
+const fileText = (file: string) => {
+	let text = fileTexts.get(file);
 	if (text === undefined) {
 		text = readFileSync(join(root, file), 'utf8');
-		generatedTexts.set(file, text);
+		fileTexts.set(file, text);
 	}
 
 	return text;
@@ -308,10 +391,62 @@ const generatedText = (file: string) => {
 /* VUE_CHECK_VERIFY_SPANS: also do what the shortcut below skips, and fail if
  * the two disagree. For the benchmark. */
 const verifySpans = Boolean(process.env.VUE_CHECK_VERIFY_SPANS);
+/* The stretches of a generated file covered by a mapping that reports a
+ * given error code, merged and in order. Volar maps an error only through a
+ * mapping that holds where it starts (both ends included) and reports its
+ * code, so an error that starts outside all of them maps nowhere: known from
+ * the map's numbers alone, without building Volar's own lookup for a file
+ * whose errors are all in Vue's scaffolding. Only for a map whose rules are
+ * data: asking one of Volar's own functions here would count as a call. */
+type Covered = { ends: number[]; starts: number[] };
+const coveredOf = new Map<SourceMap, Map<string, Covered>>();
+const covered = (map: SourceMap, code: string) => {
+	let byCode = coveredOf.get(map);
+	if (!byCode) {
+		byCode = new Map();
+		coveredOf.set(map, byCode);
+	}
+	let found = byCode.get(code);
+	if (found) return found;
+	const ranges: [number, number][] = [];
+	for (const mapping of map.mappings) {
+		if (!map.shouldReport(mapping.data, code)) continue;
+		const lengths = mapping.generatedLengths ?? mapping.lengths;
+		for (const [index, start] of mapping.generated.entries()) ranges.push([start, start + (lengths[index] ?? 0)]);
+	}
+	ranges.sort((first, second) => first[0] - second[0]);
+	found = { ends: [], starts: [] };
+	for (const [start, end] of ranges) {
+		const last = found.ends.length - 1;
+		if (last >= 0 && start <= (found.ends[last] ?? 0)) found.ends[last] = Math.max(found.ends[last] ?? 0, end);
+		else {
+			found.starts.push(start);
+			found.ends.push(end);
+		}
+	}
+	byCode.set(code, found);
+
+	return found;
+};
+const isCovered = (map: SourceMap, code: string, offset: number) => {
+	const { ends, starts } = covered(map, code);
+	let low = 0;
+	let high = starts.length - 1;
+	while (low <= high) {
+		const middle = (low + high) >> 1;
+		if ((starts[middle] ?? 0) > offset) high = middle - 1;
+		else if ((ends[middle] ?? 0) < offset) low = middle + 1;
+		else return true;
+	}
+
+	return false;
+};
 const sourcePosition = (file: string, map: SourceMap, line: number, column: number, code: string) => {
-	const generated = generatedText(file);
+	const generated = fileText(file);
 	const position = offsetOf(generated, line, column);
 	const start = position - map.shift;
+	const outside = !liveMaps.has(map) && !isCovered(map, code, start);
+	if (outside && !verifySpans) return null;
 	let volar = volarMaps.get(map);
 	if (!volar) {
 		const SourceMapClass = volarSourceMap();
@@ -340,6 +475,12 @@ const sourcePosition = (file: string, map: SourceMap, line: number, column: numb
 	 * parse of the file with TypeScript) isn't needed to know it. Not for a
 	 * map whose rules are Volar's own functions, which count their calls. */
 	const mappedByRange = () => mapped(start + spanAt(file, generated, position, code));
+	if (outside) {
+		if (mapped(start) !== null || mappedByRange() !== null)
+			throw new Error(`vue-check: ${file}(${line},${column}) TS${code} maps, and no mapping covers where it starts`);
+
+		return null;
+	}
 	if (!liveMaps.has(map) && mapped(start) === null) {
 		if (verifySpans && mappedByRange() !== null)
 			throw new Error(`vue-check: ${file}(${line},${column}) TS${code} maps by its range and not by its start`);
@@ -348,7 +489,7 @@ const sourcePosition = (file: string, map: SourceMap, line: number, column: numb
 	}
 	const sourceStart = mappedByRange();
 
-	return sourceStart === null ? null : positionOf(readFileSync(join(root, map.source), 'utf8'), sourceStart);
+	return sourceStart === null ? null : positionOf(fileText(map.source), sourceStart);
 };
 
 /* Errors only a type check finds (an unused name, an unknown one, a type that
@@ -416,7 +557,7 @@ for (const line of lines) {
 	if (!position) {
 		if (map && /^TS8\d{3}$/.test(code ?? '')) droppedJavaScriptGrammar = true;
 		if (map && !typeChecked && !hiddenSyntaxErrors.has(map.source)) {
-			const generated = generatedText(file);
+			const generated = fileText(file);
 			const syntax = syntaxErrorAt(file, generated, offsetOf(generated, Number(rawLine), Number(rawColumn)), (code ?? '').replace('TS', ''));
 			if (syntax)
 				hiddenSyntaxErrors.set(map.source, {
@@ -437,6 +578,8 @@ if (phasesFile)
 			codegenMs,
 			mapMs: performance.now() - mapStarted,
 			regeneratedFiles: regenerate.size,
+			spansParsed: spans.parsed,
+			spansRead: spans.read,
 			vueFiles: Object.keys(codegenResult.maps).length
 		})
 	);
