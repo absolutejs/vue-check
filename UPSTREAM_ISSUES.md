@@ -20,7 +20,7 @@ Last checked: **2026-11-16**, on `vue-tsc` / `@vue/language-core` **3.3.14**, vu
 | 1   | A prop value containing `//` hides the props after it      | vuejs/language-tools#6360 open | No     |
 | 2   | An empty event handler generates code that doesn't parse   | vuejs/language-tools#6361 open | No     |
 | 3   | `bun check` output carries no error length                 | oven-sh/bun#45708 open         | No     |
-| 4   | `bun check --threads=1` reports a TS2589 others don't, repeated | not filed (no public repro) | No     |
+| 4   | `bun check` reports a TS2589 others don't, repeated, depending on threads | oven-sh/bun#49100 open | No     |
 | 5   | `bun check` reports a TS2589 in the first file that hits it only | oven-sh/bun#46766 closed   | Not in a release |
 
 ---
@@ -133,13 +133,14 @@ delete `spanAt`, `SPAN` and the lazy TypeScript parser in `src/cli.ts`, and reru
 
 ---
 
-## 4. `bun check --threads=1` reports a TS2589 the other runs don't, once per file that reaches it
+## 4. `bun check` reports a TS2589 the other runs don't, once per file that reaches it, depending on the thread count
 
 - **Dependency:** Bun (`bun check`)
-- **Status:** **not filed.** Reproduced on stock Bun 1.4.4 (2026-11-16), but only on a private
-  project, and a report needs a project that can be shared. Two attempts to build one from public
-  packages (a recursive type; an Elysia app of the same shape, up to 90 plugins of 60 routes) didn't
-  show it.
+- **Status:** open, filed by us 2026-11-16
+    - **oven-sh/bun#49100**: https://github.com/oven-sh/bun/issues/49100
+    - Filed without a public reproduction: it reproduces on a private project, and two attempts to
+      build one from public packages (a recursive type; an Elysia app of the same shape, up to 90
+      plugins of 60 routes) didn't show it.
 
 **Symptom.** On one project (an Elysia server whose app is a chain of 44 `.use()` calls, and 49
 files that read the app's type), with the same generated program:
@@ -153,13 +154,15 @@ files that read the app's type), with the same generated program:
 So with one thread `bun check` reports "Type instantiation is excessively deep and possibly infinite"
 on an expression no other run reports it on, and prints that same line once for each of 27 files.
 
-**Effect on vue-check.** Only with `--threads=1`: the output then has those extra lines. The default
-run is unaffected, and it is the one the differential compares with `tsc` 7.
+**Effect on vue-check.** Always with `--threads=1`. With the default thread count it is intermittent on
+a small machine: on a GitHub Actions runner the same 27 lines appeared in one run of four on identical
+source, which fails a typecheck gate. On an 8-core machine the default run never showed it.
 
-**Workaround in vue-check.** None.
+**Workaround in vue-check.** None. In the project: the expression was an Elysia app built as one
+chain of 40 `.use()` calls, whose merged type nothing read. Registering each plugin by its own
+statement removed the error (three one-thread runs clean).
 
-**To file:** a project that shows it and can be public. The likely shape is a type that is expensive
-to instantiate, reached from many files, which one checker instantiates more than once.
+**Retire when:** a Bun release reports nothing there with one thread; check on the original chain.
 
 ---
 
