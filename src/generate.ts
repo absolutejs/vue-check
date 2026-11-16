@@ -249,8 +249,24 @@ const hasTypeScriptSyntax = (ts: typeof ownTs, text: string, jsx: boolean) => {
 };
 
 /** Where a file's generated twin lives: its absolute path, under outDir (see
- * codegen.ts: rootDirs ["/", outDir] joins every file to its twin). */
-export const mirrorOf = (outDir: string, file: string) => join(outDir, relative(parse(file).root, file));
+ * codegen.ts: rootDirs ["/", outDir] joins every file to its twin).
+ *
+ * A folder named node_modules has another name there. Each folder above a
+ * twin gets a link to its real node_modules (codegen.ts), and a twin of a
+ * Vue file inside a package would otherwise need a real folder at the very
+ * place of that link. */
+export const mirrorOf = (outDir: string, file: string) =>
+	join(outDir, relative(parse(file).root, file).replace(PACKAGES_FOLDER, `$1${MIRRORED_PACKAGES_FOLDER}`));
+const PACKAGES_FOLDER = /(^|[\\/])node_modules(?=[\\/]|$)/g;
+const MIRRORED_PACKAGES_FOLDER = 'node_modules.vue-check';
+/** The innermost node_modules folder a file is in, if it is in one. Its
+ * relative imports are joined to their twins by a pair of rootDirs of their
+ * own, since the two folders aren't named alike (see mirrorOf). */
+export const packagesFolderOf = (file: string) => {
+	const index = Math.max(file.lastIndexOf('/node_modules/'), file.lastIndexOf('\\node_modules\\'));
+
+	return index < 0 ? null : file.slice(0, index + '/node_modules'.length);
+};
 
 /** A file's generated code, from Volar or from the native codegen. */
 type EmbeddedCode = {
@@ -363,28 +379,36 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 	 * `exports` target is looked up exactly as written. codegen.ts gives each
 	 * such specifier a path alias to the twin. */
 	const packageImports = new Map<string, string>();
-	const vueTarget = (name: string, from: string) => {
-		const candidates = name.startsWith('.') || isAbsolute(name) ? [resolve(dirname(from), name)] : aliasTargets(name);
-		for (const candidate of candidates) if (existsSync(candidate)) return candidate;
-		try {
-			const target = createRequire(from).resolve(name);
-			const known = packageImports.get(name);
-			if (known === undefined) packageImports.set(name, target);
-			else if (known !== target)
-				unparsed.push({
-					fatal: true,
-					file: relative(options.root, from),
-					line: 1,
-					message: `its import of '${name}' resolves to a different file than the same import elsewhere in the project, which vue-check cannot check as vue-tsc does yet`
-				});
+	/* TypeScript resolves a name by the folder of the file that imports it
+	 * (and nothing else of that file), so each folder asks once per name.
+	 *
+	 * It resolves as vue-tsc does: beside a file with an extension TypeScript
+	 * doesn't know it looks for a declaration file (`Foo.d.vue.ts` for
+	 * `Foo.vue`), and Volar's host answers that one exists wherever the Vue
+	 * file does, then names the Vue file as what was found. So a name resolves
+	 * to a Vue file through whatever TypeScript follows (a package's
+	 * `exports`, a folder's index), and is named the way vue-tsc names it:
+	 * TypeScript asks for the real path of what it finds in node_modules, and
+	 * the declaration file has none, so a Vue file in a linked package keeps
+	 * the path it was reached by. */
+	const declarationOf = new Map<string, string>();
+	const resolutionHost: import('typescript').ModuleResolutionHost = {
+		...ts.sys,
+		fileExists: (fileName) => {
+			for (const extension of extensions) {
+				const suffix = `.d${extension}.ts`;
+				if (!fileName.endsWith(suffix)) continue;
+				const source = fileName.slice(0, -suffix.length) + extension;
+				if (ts.sys.fileExists(source)) {
+					declarationOf.set(fileName, source);
 
-			return target;
-		} catch {
-			return null;
+					return true;
+				}
+			}
+
+			return ts.sys.fileExists(fileName);
 		}
 	};
-	/* TypeScript resolves a name by the folder of the file that imports it
-	 * (and nothing else of that file), so each folder asks once per name. */
 	const resolutions = new Map<string, Map<string, string | undefined>>();
 	const resolveFrom = (name: string, file: string) => {
 		const folder = dirname(file);
@@ -394,13 +418,45 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 			resolutions.set(folder, known);
 		}
 		if (known.has(name)) return known.get(name);
-		const resolved = ts.resolveModuleName(name, file, parsed.options, ts.sys, resolutionCache).resolvedModule?.resolvedFileName;
+		const found = ts.resolveModuleName(name, file, parsed.options, resolutionHost, resolutionCache).resolvedModule?.resolvedFileName;
+		const resolved = found === undefined ? undefined : (declarationOf.get(found) ?? found);
 		known.set(name, resolved);
 
 		return resolved;
 	};
-	const followed = (resolved: string | undefined): resolved is string =>
-		Boolean(resolved) && !resolved?.endsWith('.d.ts') && !resolved?.includes('/node_modules/');
+	/* A Vue file a package's name resolves to: every import of that name
+	 * must mean the same file, since one alias stands for it. */
+	const packageTarget = (name: string, target: string, from: string) => {
+		const known = packageImports.get(name);
+		if (known === undefined) packageImports.set(name, target);
+		else if (known !== target)
+			unparsed.push({
+				fatal: true,
+				file: relative(options.root, from),
+				line: 1,
+				message: `its import of '${name}' resolves to a different file than the same import elsewhere in the project, which vue-check cannot check as vue-tsc does yet`
+			});
+
+		return target;
+	};
+	const vueTarget = (name: string, from: string) => {
+		const candidates = name.startsWith('.') || isAbsolute(name) ? [resolve(dirname(from), name)] : aliasTargets(name);
+		for (const candidate of candidates) if (existsSync(candidate)) return candidate;
+		const target = resolveFrom(name, from);
+
+		return target !== undefined && isVue(target) ? packageTarget(name, target, from) : null;
+	};
+	/* The source files to read for the Vue files they reach: the project's
+	 * own, which what a package's name resolves to isn't. A relative import
+	 * stays in the package of the file that has it, so one from a file being
+	 * read is read too, whatever folder that is (a linked workspace package's
+	 * Vue file is named by its path in node_modules, and so is what it
+	 * imports). */
+	const followed = (resolved: string | undefined, name = ''): resolved is string =>
+		resolved !== undefined &&
+		!resolved.endsWith('.d.ts') &&
+		!isVue(resolved) &&
+		(!resolved.includes('/node_modules/') || name.startsWith('./') || name.startsWith('../'));
 	const importsIn = (text: string) => ts.preProcessFile(text, true, true).importedFiles.map((imported) => imported.fileName);
 	/* What each source file imports, read natively and ahead of the walk
 	 * below (see importReader): the files given, then every file they reach.
@@ -421,7 +477,7 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 				for (const name of names) {
 					if (isVue(name)) continue;
 					const resolved = resolveFrom(name, file);
-					if (followed(resolved) && !asked.has(resolved)) {
+					if (followed(resolved, name) && !asked.has(resolved)) {
 						asked.add(resolved);
 						next.push(resolved);
 					}
@@ -442,7 +498,17 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 				continue;
 			}
 			const resolved = resolveFrom(name, file);
-			if (!followed(resolved) || scanned.has(resolved)) continue;
+			/* A name that isn't a Vue file's and resolves to one (a package's
+			 * `exports`). */
+			if (resolved !== undefined && isVue(resolved)) {
+				const target = packageTarget(name, resolved, file);
+				if (!queued.has(target)) {
+					queued.add(target);
+					queue.push(target);
+				}
+				continue;
+			}
+			if (!followed(resolved, name) || scanned.has(resolved)) continue;
 			scanned.add(resolved);
 			scan(resolved, importsOf(resolved));
 		}
@@ -476,7 +542,7 @@ export const generate = (options: { native?: false; only?: string[]; outDir: str
 				if ('generated' in result && result.imports)
 					for (const name of result.imports) {
 						const resolved = isVue(name) ? undefined : resolveFrom(name, queuedFile);
-						if (followed(resolved)) reached.push(resolved);
+						if (followed(resolved, name)) reached.push(resolved);
 					}
 			}
 			readAhead(reached);

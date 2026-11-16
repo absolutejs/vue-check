@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
-import { generate, mirrorOf, parseProject } from './generate';
+import { generate, mirrorOf, packagesFolderOf, parseProject } from './generate';
 import { serialize } from './serialize';
 
 /*
@@ -52,6 +52,19 @@ for (const { link, real } of references)
 		break;
 	}
 
+/* A Vue file inside a package (a linked workspace package's, named by its
+ * path in node_modules as vue-tsc names it): its twin's folder isn't named
+ * as its own is (see mirrorOf), so the two are joined as roots themselves. */
+const packageRoots = [
+	...new Set(
+		Object.values(maps).flatMap((map) => {
+			const folder = packagesFolderOf(join(root, map.source));
+
+			return folder === null ? [] : [folder, mirrorOf(outDir, folder)];
+		})
+	)
+];
+
 /* The project's own options, plus the generated tree as one directory with
  * it. The root files are listed explicitly, in the order tsc lists the
  * project's (each Vue file replaced by its generated TypeScript, in place):
@@ -97,7 +110,7 @@ writeFileSync(
 		compilerOptions: {
 			allowArbitraryExtensions: true,
 			// Every file and its generated twin, wherever it is (see mirrorOf).
-			rootDirs: [parse(root).root, outDir],
+			rootDirs: [parse(root).root, outDir, ...packageRoots],
 			...(paths ? { paths } : {}),
 			...(types ? { types } : {}),
 			...(options.baseUrl ? { baseUrl: null } : {}),
